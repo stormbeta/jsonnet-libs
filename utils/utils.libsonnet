@@ -27,15 +27,21 @@
     then std.trace(std.toString(any), any)
     else any,
 
+  contains:: function(collection, ref)
+    if std.type(collection) == 'object' then
+      std.member(std.objectFields(collection), ref)
+    else
+      std.member(collection, ref),
+
   // safe field reference with default if field not present
-  optional:: function(object, field, default)
-    if std.member(std.objectFields(object), field)
+  optional:: function(object, field, default={})
+    if self.contains(object, field)
     then object[field]
     else default,
 
   // safe deep field navigation
-  safe_get:: function(object, fields, default)
-    if std.length(fields) > 0 && std.member(std.objectFields(object), fields[0])
+  safe_get:: function(object, fields, default={})
+    if std.length(fields) > 0 && self.contains(object, fields[0])
     then (
       if std.length(fields) == 1 then
         self.optional(object, fields[0], default)

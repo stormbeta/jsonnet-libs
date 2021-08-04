@@ -32,4 +32,27 @@ test.suite({
     ],
     expect: ['default', 'default', null],
   },
+
+  'test contains function': {
+    actual: [
+      // true
+      utils.contains(['alpha', 'beta', 'delta'], 'delta'),
+      utils.contains({ hello: 'world', goodbye: 'world' }, 'hello'),
+      utils.contains('hello world', 'world'),
+      // false
+      utils.contains(['alpha', 'beta', 'delta'], 'gamma'),
+      utils.contains({ hello: 'world', goodbye: 'world' }, 'nothing'),
+      utils.contains({ hello: 'world', goodbye: 'world' }, null),
+      utils.contains('hello world', 'never'),
+    ],
+    expect: [
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+    ],
+  },
 })
