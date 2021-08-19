@@ -51,4 +51,14 @@
                       default)
     )
     else default,
+
+  // Given a list of entries, merge-reduce all entries with matching values for the given key
+  // Useful for appending overrides to lists of entries, e.g. kuberentes resources
+  merge_entries_by_key:: function(key, entries) [
+    std.foldl(function(acc, item) acc + item, group, {})
+    for group in [
+      std.filter(function(entry) entry[key] == name, entries)
+      for name in std.set(std.map(function(entry) entry[key], entries))
+    ]
+  ],
 }

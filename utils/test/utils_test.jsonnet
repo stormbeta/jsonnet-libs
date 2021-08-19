@@ -55,4 +55,25 @@ test.suite({
       false,
     ],
   },
+
+  'test entries merge': {
+    actual: utils.merge_entries_by_key('name', [{
+      name: 'one',
+      value: 'no',
+    }, {
+      name: 'one',
+      value: 'yes',
+    }, {
+      name: 'two',
+      value: null,
+    }]),
+
+    expect: [{
+      name: 'one',
+      value: 'yes',
+    }, {
+      name: 'two',
+      value: null,
+    }],
+  },
 })
