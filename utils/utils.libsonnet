@@ -54,11 +54,30 @@
 
   // Given a list of entries, merge-reduce all entries with matching values for the given key
   // Useful for appending overrides to lists of entries, e.g. kuberentes resources
-  merge_entries_by_key:: function(key, entries) [
-    std.foldl(function(acc, item) acc + item, group, {})
-    for group in [
-      std.filter(function(entry) entry[key] == name, entries)
-      for name in std.set(std.map(function(entry) entry[key], entries))
-    ]
-  ],
+  merge_entries_by_key:: function(key, entries)
+    [
+      std.foldl(function(acc, item) acc + item, group, {})
+      for group in [
+        std.filter(function(entry) entry[key] == name, entries)
+        for name in std.set(std.map(function(entry) entry[key], entries))
+      ]
+    ],
+
+  // Non-recursive version of std.prune(...)
+  shallowPrune:: function(object)
+    {
+      [field]: object[field]
+      for field in std.objectFields(object)
+      if object[field] != null
+    },
+
+  // Forcibly mark specified top-level fields as mergeable in object
+  // Useful for integrating data from plain non-jsonnet sources (e.g. YAML/JSON)
+  makeMergeableOn:: function(object, fields)
+    {
+      [field]: (if std.member(fields, field) && ( field in super)
+                then (super[field] + object[field])
+                else object[field])
+      for field in std.objectFields(object)
+    },
 }
