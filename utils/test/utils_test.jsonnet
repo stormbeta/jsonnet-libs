@@ -1,34 +1,38 @@
-#!/usr/bin/env jsonnet -J ./jsonnetunit
+#!/usr/bin/env jsonnet -J ../jsonnetunit
 
 local utils = (import '../utils.libsonnet') {
-  log_level:: self.TRACE,
+  log+: {
+    level:: self.TRACE,
+  },
 };
 local test = import 'jsonnetunit/test.libsonnet';
 
 test.suite({
-  'test log_level set': {
-    actual: utils.log_level,
-    expect: utils.TRACE,
+  local log = utils.log,
+
+  'test log level set': {
+    actual: log.level,
+    expect: log.TRACE,
   },
 
-  'test safe_get basic': {
-    actual: utils.safe_get({ a: { b: { c: 'yay' } } }, ['a', 'b', 'c'], 'boo'),
+  'test safeGet basic': {
+    actual: utils.safeGet({ a: { b: { c: 'yay' } } }, ['a', 'b', 'c'], 'boo'),
     expect: 'yay',
   },
 
-  'test safe_get defaults': {
+  'test safeGet defaults': {
     actual: [
-      utils.safe_get({ a: { b: { c: 'yay' } } }, ['a', 'b', 'nope'], 'default'),
-      utils.safe_get({ a: { b: { c: 'yay' } } }, ['never'], 'default'),
+      utils.safeGet({ a: { b: { c: 'yay' } } }, ['a', 'b', 'nope'], 'default'),
+      utils.safeGet({ a: { b: { c: 'yay' } } }, ['never'], 'default'),
     ],
     expect: ['default', 'default'],
   },
 
-  'test safe_get edge cases': {
+  'test safeGet edge cases': {
     actual: [
-      utils.safe_get({ a: { b: { c: 'yay' } } }, [], 'default'),
-      utils.safe_get({}, ['hello', 'world'], 'default'),
-      utils.safe_get({ nothing: null }, ['nothing'], 'default'),
+      utils.safeGet({ a: { b: { c: 'yay' } } }, [], 'default'),
+      utils.safeGet({}, ['hello', 'world'], 'default'),
+      utils.safeGet({ nothing: null }, ['nothing'], 'default'),
     ],
     expect: ['default', 'default', null],
   },
@@ -57,7 +61,7 @@ test.suite({
   },
 
   'test entries merge': {
-    actual: utils.merge_entries_by_key('name', [{
+    actual: utils.mergeEntriesByKey('name', [{
       name: 'one',
       value: 'no',
     }, {
