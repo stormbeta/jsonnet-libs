@@ -27,7 +27,7 @@ MapOf(SCHEMA)
   Will check that all fields in the object have values of the same provided type
   There's no schema for the keys since keys are always string in JSON
 
-Union([SCHEMAS...])
+Either([SCHEMAS...])
   Will check that data matches at least one of the provided schemas
 
 Custom(FUNCTION(DATA)->[ERRORS...])
@@ -128,11 +128,77 @@ local
   maybeGet = function(object, field, default={})
     if std.objectHas(object, field)
     then object[field]
-    else default
+    else default,
+
+  // TODO: move to library function
+  // Functions cannot be inspected or converted to strings
+  // But we still want meaningful error output on function-based validation
+  // so functions have the option of including a 'schemaString' into the vdata
+  // result, which we obtain by making a dummy call on the extension function
+  schemaToString = function(validate, schema)
+    local traverse = function(_schema)
+      local type = std.type(_schema);
+      if type == 'function' then
+        local inspect = _schema(validate, { value: null, context: [] });
+        if std.objectHas(inspect, 'schemaString') then
+          inspect.schemaString
+        else
+          '<function>'
+      else if type == 'object' then {
+        [field]: traverse(_schema[field])
+        for field in std.objectFields(_schema)
+      }
+      else if type == 'array' then [
+        traverse(item)
+        for item in _schema
+      ]
+      else _schema;
+    std.toString(traverse(schema))
 ;
 
 
 {
+  VData:: {
+    // DATA => VDATA
+    bind:: function(data) {
+      value: data,
+      errors: [],
+      context: [],
+    },
+
+    // VDATA => DATA else ERRORS
+    unwrap:: function(vdata)
+      if std.length(vdata.errors) == 0
+      then vdata.value
+      else error (std.foldl(
+                    function(sum, err) sum + '\n' + err,
+                    vdata.errors,
+                    ''
+                  )),
+
+    // [VDATA] => VDATA
+    rebindArray:: function(vdata_array) {
+      // TODO: handle Optional correctly in arrays
+      //       will probably need to convert to mapWithIndex
+      value: [item.value for item in vdata_array],
+      errors: combine([item.errors for item in vdata_array]),
+    },
+
+    // {K: VDATA, ...} => VDATA
+    rebindObject:: function(vdata_map) {
+      value: {
+        [field]: vdata_map[field].value
+        for field in std.objectFields(vdata_map)
+        if !(maybeGet(vdata_map[field], 'optional', false) && !contains(vdata_map[field], 'value'))
+      },
+      errors: combine([
+        field_vdata.errors
+        for field_vdata in std.objectValues(vdata_map)
+        if !(maybeGet(field_vdata, 'optional', false) && !contains(field_vdata, 'value'))
+      ]),
+    },
+  },
+
   // jq-style representation of current context in object
   // @context: [{type: field|index|FIELD_MISSING, value: ...}]
   contextString:: function(context)
@@ -150,93 +216,44 @@ local
         ''
       ),
 
-  addError:: function(vdata, message, opts={})
+  addError:: function(vdata, message, label='error')
     vdata {
-      errors+: [{
-        path: $.contextString(vdata.context),
-        'error': message,
-        //(if maybeGet(opts, 'type', false) then ' TYPE: %s\n' % std.type(vdata.value) else '') +
-      }],
+      errors+: [
+        { path: $.contextString(vdata.context) } +
+        if std.type(message) == 'string' then
+          { [label]: message }
+        else
+          message,
+      ],
     },
 
   missingError:: function(vdata)
-    $.addError(vdata, 'ERROR: required field does not exist!\n'),
-
-  // Behold, the power of monads!
-  // NOTE: this should maybe be exposed in the library better
-  Validator:: {
-    local UnitError = [],
-    local UnitContext = [],
-
-    missingError:: function(vdata)
-      vdata {
-        errors+: [{
-          path: $.contextString(vdata.context),
-          'error': 'required field does not exist!',
-        }],
-      },
-
-    // DATA => VDATA
-    wrap:: function(data) {
-      value: data,
-      errors: UnitError,
-      context: UnitContext,
-    },
-
-    // VDATA => DATA else ERRORS
-    unwrap:: function(vdata)
-      if std.length(vdata.errors) == 0
-      then vdata.value
-      else error (std.foldl(
-                    function(sum, err) sum + '\n' + err,
-                    vdata.errors,
-                    ''
-                  )),
-
-    // [VDATA] => VDATA
-    rewrapArr:: function(vdata_array) {
-      // TODO: handle Optional correctly in arrays
-      //       will probably need to convert to mapWithIndex
-      value: [item.value for item in vdata_array],
-      errors: combine([item.errors for item in vdata_array]),
-    },
-
-    // {K: VDATA, ...} => VDATA
-    rewrapObj:: function(vdata_map) {
-      value: {
-        [field]: vdata_map[field].value
-        for field in std.objectFields(vdata_map)
-        if !(maybeGet(vdata_map[field], 'optional', false) && !contains(vdata_map[field], 'value'))
-      },
-      errors: combine([
-        field_vdata.errors
-        for field_vdata in std.objectValues(vdata_map)
-        if !(maybeGet(field_vdata, 'optional', false) && !contains(field_vdata, 'value'))
-      ]),
-    },
-  },
+    $.addError(vdata, 'required field does not exist!'),
 
   // Helper to make it easy to write basic custom conditionals
   Custom:: function(custom_function)
     function(validate, vdata)
-      if !std.objectHas(vdata, 'value') then
-        $.missingError(vdata)
-      else
-        local result = custom_function(vdata.value);
-        if result == true || std.type(result) != 'string'
-        then vdata
-        else $.addError(vdata, result),
+      { schemaString: 'custom' } +
+      (if !std.objectHas(vdata, 'value') then
+         $.missingError(vdata)
+       else
+         local result = custom_function(vdata.value);
+         if result == true || std.type(result) != 'string'
+         then vdata
+         else $.addError(vdata, result)),
 
   // Check that all values in the array match the same schema (similar to Array<T> in java)
   Array:: function(schema)
     // TODO: Handle missing value case
     function(validate, maybe_vdata)
-      { context: maybe_vdata.context } +
+      {
+        context: maybe_vdata.context,
+        schemaString: 'Array[%s]' + schemaToString(validate, schema),
+      } +
       if std.type(maybe_vdata.value) != 'array' then
-        // TODO: We need a safe way to toString schemas that might contain functions
-        $.addError(maybe_vdata, 'EXPECTED: [%s]' % 'tmp', { type: true })
+        $.addError(maybe_vdata, 'Array[%s]' % schemaToString(validate, schema), 'expected')
       else
-        $.Validator.rewrapArr(
+        $.VData.rebindArray(
           std.mapWithIndex(
             function(index, _)
               validate(
@@ -253,32 +270,43 @@ local
 
   // Check that all fields in the data match the same schema (similar to Map<String,T> in java)
   MapOf:: function(schema)
-    // TODO: What if vdata.value is not an object?
     function(validate, maybe_vdata)
-      { context: maybe_vdata.context } +
-      if contains(maybe_vdata, 'value') then
-        $.Validator.rewrapObj(
-          {
-            [field]: validate(
-              {
-                value: maybe_vdata.value[field],
-                errors: [],  // Strictly speaking, this should be UnitError incase type of errors changes
-                context: maybe_vdata.context + [{ type: 'field', value: field }],
-              },
-              schema
-            )
-            for field in std.objectFields(maybe_vdata.value)
-          },
-        )
-      else $.Validator.missingError(maybe_vdata),
+      local schemaString = 'Map{%s}' % schemaToString(validate, schema);
+      {
+        context: maybe_vdata.context,
+        schemaString: schemaString,
+      } +
+      (if contains(maybe_vdata, 'value') then
+         if std.type(maybe_vdata.value) != 'object' then
+           $.addError(maybe_vdata, {
+             expected: schemaString,
+             actual: std.type(maybe_vdata.value),
+             value: maybe_vdata.value,
+           })
+         else
+           $.VData.rebindObject(
+             {
+               [field]: validate(
+                 {
+                   value: maybe_vdata.value[field],
+                   errors: [],  // Strictly speaking, this should be UnitError incase type of errors changes
+                   context: maybe_vdata.context + [{ type: 'field', value: field }],
+                 },
+                 schema
+               )
+               for field in std.objectFields(maybe_vdata.value)
+             },
+           )
+       else $.VData.missingError(maybe_vdata))
+      + { ext+: 'MapOf' },
 
   // Validate if exists, otherwise ignore
   Optional:: function(schema)
     function(validate, maybe_vdata)
-      validate(maybe_vdata, schema) { optional: true },
+      validate(maybe_vdata, schema) { optional: true, schemaString+: schemaToString(validate, schema) + '?' },
 
   // Check data against all provided schemas, and return the result of the first one that matches (or error if none)
-  Union:: function(schemas)
+  Either:: function(schemas)
     function(validate, maybe_vdata)
       local results =
         std.filter(
@@ -288,15 +316,18 @@ local
             schemas
           )
         );
+      {
+        schemaString:
+          std.join('|', ([schemaToString(validate, s) for s in schemas])),
+      } +
       if !contains(maybe_vdata, 'value') then
-        $.Validator.missingError(maybe_vdata)
+        $.VData.missingError(maybe_vdata)
       else if std.length(results) == 0 then
         maybe_vdata {
-          // TODO: KNOWN BUG - if schemas contain a function, this will break!
           errors+:
             [{
               path: $.contextString(maybe_vdata.context),
-              expected: 'ANY OF ' + std.toString(schemas),
+              expected: 'ANY OF ' + schemaToString(validate, schemas),
               actual: std.type(maybe_vdata.value),
               value: (if std.type(maybe_vdata.value) == 'string'
                       then '"' + maybe_vdata.value + '"'
@@ -310,6 +341,7 @@ local
   Enum:: function(literalsArray)
     // TODO: handle missing vdata.value case
     function(validate, maybe_vdata)
+      { schemaString: 'Enum' } +
       if std.member(literalsArray, maybe_vdata.value) then
         maybe_vdata
       else
@@ -329,12 +361,14 @@ local
       local dataType = std.type(vdata.value);
       local schemaType = std.type(schema);
 
-      // This must be done first in order to handle Optional values correctly
-      // This also means all extension validator functions MUST be able to handle
-      // the value field being missing!
+      // This must be done first, or else extensions like Optional will never
+      // get the opportunity to handle missing values before it becomes an error
+      // Caveat is this means all extension handlers *MUST* handle the possibility
+      // of a missing value themselves!
       if schemaType == 'function' then
         schema(validate, vdata)
 
+      // Check if field is missing
       else if !contains(vdata, 'value') then
         {
           errors+: [{
@@ -346,12 +380,13 @@ local
       else if schema == 'any' then
         vdata
 
+      // Recurse into object schema
       else if schemaType == 'object' && dataType == 'object' then
         // TODO: additional validator to force strict checking
         //       i.e. data has no fields that aren't in schema
         // TODO: unknown fields in the data are silently ignored/dropped, which probably isn't desirable default behavior
         { context: vdata.context }
-        + $.Validator.rewrapObj(
+        + $.VData.rebindObject(
           {
             [field]:
               validate(
@@ -359,7 +394,7 @@ local
                    { value: vdata.value[field] }
                  else {})
                 + {
-                  errors: [],  // TODO: should be Validator.UnitError
+                  errors: [],
                   context: vdata.context + [{ type: 'field', value: field }],
                 },
                 schema[field]
@@ -368,11 +403,13 @@ local
           },
         )
 
+      // Recurse into fixed array schema - this will likely be a rare case
+      // as most arrays are not fixed length/positional
       else if schemaType == 'array' && dataType == 'array' then
         // TODO: Add check that arrays are of equal length
         //       Alternatively, pass empty missing value field vdata for indexes not in input data?
         { context: vdata.context } +
-        $.Validator.rewrapArr(
+        $.VData.rebindArray(
           std.mapWithIndex(
             function(index, _)
               validate(
@@ -404,7 +441,7 @@ local
                       else std.toString(vdata.value)),
             }],
           };
-    validate($.Validator.wrap(input), schema),
+    validate($.VData.bind(input), schema),
 
   JsonValidate:: function(data, schema)
     local result_vdata = self.RawValidate(data, schema);
@@ -420,7 +457,4 @@ local
       error '\n' + prettyPrintErrors(result_vdata.errors)
     else
       result_vdata.value,
-  //$.Validator.unwrap(
-  //self.RawValidate(data, schema)
-  //),
 }

@@ -97,4 +97,26 @@ test.suite({
       ]),
     },
   },
+
+  'test safe stringification of functions in schema': {
+    local data = { hello: 'world' },
+    actual: v.JsonValidate(data, v.MapOf(
+      v.Either(['number', v.MapOf(v.Either(['number', 'string']))])
+    )),
+    expectThat: {
+      result: self.actual.errors[0].expected == 'ANY OF ["number", "Map{number|string}"]',
+    },
+  },
+
+  'test optional error output stringification': {
+    local data = {
+      hello: 'no',
+    },
+    actual: v.JsonValidate(data, {
+      hello: v.Array(v.Optional('string')),
+    }),
+    expectThat: {
+      result: self.actual.errors[0].expected == 'Array[string?]',
+    },
+  },
 })
