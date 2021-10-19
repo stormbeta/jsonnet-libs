@@ -119,4 +119,36 @@ test.suite({
       result: self.actual.errors[0].expected == 'Array[string?]',
     },
   },
+
+  'test mismatched array length': {
+    local data = [0, 1, 2],
+    actual: v.JsonValidate(data, ['number', 'number']),
+    expectThat: {
+      local err = self.actual.errors[0],
+      result: all([err.actual == 3, err.expected == 2]),
+    },
+  },
+
+  'test optional field': {
+    local datas = [
+      // Value exists
+      { option: true, static: 'static' },
+      // Value exists but is wrong type
+      { option: 'wrong-type', static: 'static' },
+      // Value doesn't exist
+      { static: 'static' },
+    ],
+    actual: [
+      v.RawValidate(data, { option: v.Optional('boolean') })
+      for data in datas
+    ],
+    expectThat: {
+      result: all([
+        std.length(self.actual[0].errors) == 0 && std.objectHas(self.actual[0].value, 'option'),
+        std.length(self.actual[1].errors) > 0,
+        std.length(self.actual[2].errors) == 0 && !std.objectHas(self.actual[2].value, 'option'),
+      ]),
+    },
+  },
+
 })

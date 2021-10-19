@@ -301,9 +301,14 @@ local
       + { ext+: 'MapOf' },
 
   // Validate if exists, otherwise ignore
+  // TODO: Allow specifying a default value
   Optional:: function(schema)
     function(validate, maybe_vdata)
-      validate(maybe_vdata, schema) { optional: true, schemaString+: schemaToString(validate, schema) + '?' },
+      // TODO: This is really ugly, and we should be handling schemaString better
+      validate(maybe_vdata { schemaString: schemaToString(validate, schema) + '?' }, schema) {
+        optional: true,
+        schemaString: schemaToString(validate, schema) + '?',
+      },
 
   // Check data against all provided schemas, and return the result of the first one that matches (or error if none)
   Either:: function(schemas)
@@ -353,9 +358,6 @@ local
           }],
         },
 
-  // TODO: This isn't safe to print out without unwrapping
-  //       Jsonnet is lazily-evaluated, so it might try to parse missing data if you force it to
-  //       print out the entire object
   RawValidate:: function(input, schema)
     local validate = function(vdata, schema)  // => VDATA
       local dataType = std.type(vdata.value);
@@ -406,23 +408,28 @@ local
       // Recurse into fixed array schema - this will likely be a rare case
       // as most arrays are not fixed length/positional
       else if schemaType == 'array' && dataType == 'array' then
-        // TODO: Add check that arrays are of equal length
-        //       Alternatively, pass empty missing value field vdata for indexes not in input data?
         { context: vdata.context } +
-        $.VData.rebindArray(
-          std.mapWithIndex(
-            function(index, _)
-              validate(
-                {
-                  value: vdata.value[index],
-                  errors: [],
-                  context: vdata.context + [{ type: 'index', value: index }],
-                },
-                schema[index]
-              )
-            , schema
+        if std.length(schema) != std.length(vdata.value) then
+          $.addError(vdata, {
+            'error': 'Array length does not match schema',
+            expected: std.length(schema),
+            actual: std.length(vdata.value),
+          })
+        else
+          $.VData.rebindArray(
+            std.mapWithIndex(
+              function(index, _)
+                validate(
+                  {
+                    value: vdata.value[index],
+                    errors: [],
+                    context: vdata.context + [{ type: 'index', value: index }],
+                  },
+                  schema[index]
+                )
+              , schema
+            )
           )
-        )
 
       else if std.member(['array', 'object'], schema) && std.member(['array', 'object'], dataType) then
         vdata
@@ -434,7 +441,9 @@ local
           vdata {
             errors+: [{
               path: $.contextString(vdata.context),
-              expected: schema,
+              // TODO: This is really messy - we could maybe handle schemaString explicitly
+              //       like we do with the context path?
+              expected: maybeGet(vdata, 'schemaString', schema),
               actual: dataType,
               value: (if dataType == 'string'
                       then '"' + vdata.value + '"'
