@@ -138,8 +138,11 @@ local
   schemaToString = function(validate, schema)
     local traverse = function(_schema)
       local type = std.type(_schema);
-      if type == 'function' then
-        local inspect = _schema(validate, { value: null, context: [] });
+      if type == 'function' && std.length(_schema) == 2 then
+        // TODO: This a horrible hack
+        //       But there might not be a better way, we need to be able to inspect
+        //       schema top-down to report useful errors
+        local inspect = _schema(validate, { context: [] });
         if std.objectHas(inspect, 'schemaString') then
           inspect.schemaString
         else
@@ -160,10 +163,25 @@ local
 {
   VData:: {
     // DATA => VDATA
-    bind:: function(data) {
+    lift:: function(data) {
       value: data,
       errors: [],
       context: [],
+    },
+
+    bindField:: function(vdata, field)
+      (if contains(vdata.value, field) then
+         { value: vdata.value[field] }
+       else {})
+      + {
+        errors: [],
+        context: vdata.context + [{ type: 'field', value: field }],
+      },
+
+    bindIndex:: function(vdata, index) {
+      value: vdata.value[index],
+      errors: [],
+      context: vdata.context + [{ type: 'index', value: index }],
     },
 
     // VDATA => DATA else ERRORS
@@ -186,12 +204,12 @@ local
 
     // {K: VDATA, ...} => VDATA
     rebindObject:: function(vdata_map) {
-      value: {
+      value+: {
         [field]: vdata_map[field].value
         for field in std.objectFields(vdata_map)
         if !(maybeGet(vdata_map[field], 'optional', false) && !contains(vdata_map[field], 'value'))
       },
-      errors: combine([
+      errors+: combine([
         field_vdata.errors
         for field_vdata in std.objectValues(vdata_map)
         if !(maybeGet(field_vdata, 'optional', false) && !contains(field_vdata, 'value'))
@@ -231,39 +249,34 @@ local
     $.addError(vdata, 'required field does not exist!'),
 
   // Helper to make it easy to write basic custom conditionals
-  Custom:: function(custom_function)
+  // Return true/non-string for validness
+  Custom:: function(customFunction, errMessage='%s')
     function(validate, vdata)
       { schemaString: 'custom' } +
       (if !std.objectHas(vdata, 'value') then
          $.missingError(vdata)
        else
-         local result = custom_function(vdata.value);
-         if result == true || std.type(result) != 'string'
+         local result = customFunction(vdata.value);
+         if std.type(result) == 'boolean' && result
          then vdata
-         else $.addError(vdata, result)),
+         else $.addError(vdata, errMessage % vdata.value)),
 
   // Check that all values in the array match the same schema (similar to Array<T> in java)
   Array:: function(schema)
-    // TODO: Handle missing value case
     function(validate, maybe_vdata)
       {
         context: maybe_vdata.context,
         schemaString: 'Array[%s]' + schemaToString(validate, schema),
       } +
-      if std.type(maybe_vdata.value) != 'array' then
+      if !std.objectHas(maybe_vdata, 'value') then
+        $.missingError(maybe_vdata)
+      else if std.type(maybe_vdata.value) != 'array' then
         $.addError(maybe_vdata, 'Array[%s]' % schemaToString(validate, schema), 'expected')
       else
         $.VData.rebindArray(
           std.mapWithIndex(
             function(index, _)
-              validate(
-                {
-                  value: maybe_vdata.value[index],
-                  errors: [],
-                  context: maybe_vdata.context + [{ type: 'index', value: index }],
-                },
-                schema
-              )
+              validate($.VData.bindIndex(maybe_vdata, index), schema)
             , maybe_vdata.value
           )
         ),
@@ -284,21 +297,11 @@ local
              value: maybe_vdata.value,
            })
          else
-           $.VData.rebindObject(
-             {
-               [field]: validate(
-                 {
-                   value: maybe_vdata.value[field],
-                   errors: [],  // Strictly speaking, this should be UnitError incase type of errors changes
-                   context: maybe_vdata.context + [{ type: 'field', value: field }],
-                 },
-                 schema
-               )
-               for field in std.objectFields(maybe_vdata.value)
-             },
-           )
-       else $.VData.missingError(maybe_vdata))
-      + { ext+: 'MapOf' },
+           $.VData.rebindObject({
+             [field]: validate($.VData.bindField(maybe_vdata, field), schema)
+             for field in std.objectFields(maybe_vdata.value)
+           })
+       else $.missingError(maybe_vdata)),
 
   // Validate if exists, otherwise ignore
   // TODO: Allow specifying a default value
@@ -326,20 +329,15 @@ local
           std.join('|', ([schemaToString(validate, s) for s in schemas])),
       } +
       if !contains(maybe_vdata, 'value') then
-        $.VData.missingError(maybe_vdata)
+        $.missingError(maybe_vdata)
       else if std.length(results) == 0 then
-        maybe_vdata {
-          errors+:
-            [{
-              path: $.contextString(maybe_vdata.context),
-              expected: 'ANY OF ' + schemaToString(validate, schemas),
-              actual: std.type(maybe_vdata.value),
-              value: (if std.type(maybe_vdata.value) == 'string'
-                      then '"' + maybe_vdata.value + '"'
-                      else std.toString(maybe_vdata.value)),
-            }],
-
-        }
+        $.addError(maybe_vdata, {
+          expected: 'ANY OF ' + schemaToString(validate, schemas),
+          actual: std.type(maybe_vdata.value),
+          value: (if std.type(maybe_vdata.value) == 'string'
+                  then '"' + maybe_vdata.value + '"'
+                  else std.toString(maybe_vdata.value)),
+        })
       else
         results[0],
 
@@ -350,13 +348,10 @@ local
       if std.member(literalsArray, maybe_vdata.value) then
         maybe_vdata
       else
-        maybe_vdata {
-          errors+: [{
-            path: $.contextString(maybe_vdata.context),
-            expected: 'Literal matching one of ' + std.toString(literalsArray),
-            actual: std.toString(maybe_vdata.value),
-          }],
-        },
+        $.addError(maybe_vdata, {
+          expected: 'Literal matching one of ' + std.toString(literalsArray),
+          actual: std.toString(maybe_vdata.value),
+        }),
 
   RawValidate:: function(input, schema)
     local validate = function(vdata, schema)  // => VDATA
@@ -372,12 +367,9 @@ local
 
       // Check if field is missing
       else if !contains(vdata, 'value') then
-        {
-          errors+: [{
-            path: $.contextString(vdata.context),
-            'error': 'required field does not exist!',
-          }],
-        }
+        $.addError(vdata, {
+          'error': 'required field does not exist!',
+        })
 
       else if schema == 'any' then
         vdata
@@ -387,23 +379,11 @@ local
         // TODO: additional validator to force strict checking
         //       i.e. data has no fields that aren't in schema
         // TODO: unknown fields in the data are silently ignored/dropped, which probably isn't desirable default behavior
-        { context: vdata.context }
-        + $.VData.rebindObject(
-          {
-            [field]:
-              validate(
-                (if contains(vdata.value, field) then
-                   { value: vdata.value[field] }
-                 else {})
-                + {
-                  errors: [],
-                  context: vdata.context + [{ type: 'field', value: field }],
-                },
-                schema[field]
-              )
-            for field in std.objectFields(schema)
-          },
-        )
+        { context: vdata.context } +
+        $.VData.rebindObject({
+          [field]: validate($.VData.bindField(vdata, field), schema[field])
+          for field in std.objectFields(schema)
+        })
 
       // Recurse into fixed array schema - this will likely be a rare case
       // as most arrays are not fixed length/positional
@@ -419,14 +399,7 @@ local
           $.VData.rebindArray(
             std.mapWithIndex(
               function(index, _)
-                validate(
-                  {
-                    value: vdata.value[index],
-                    errors: [],
-                    context: vdata.context + [{ type: 'index', value: index }],
-                  },
-                  schema[index]
-                )
+                validate($.VData.bindIndex(vdata, index), schema[index])
               , schema
             )
           )
@@ -450,7 +423,7 @@ local
                       else std.toString(vdata.value)),
             }],
           };
-    validate($.VData.bind(input), schema),
+    validate($.VData.lift(input), schema),
 
   JsonValidate:: function(data, schema)
     local result_vdata = self.RawValidate(data, schema);
