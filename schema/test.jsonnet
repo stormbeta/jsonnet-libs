@@ -104,7 +104,7 @@ test.suite({
       v.Either(['number', v.MapOf(v.Either(['number', 'string']))])
     )),
     expectThat: {
-      result: self.actual.errors[0].expected == 'ANY OF ["number", "Map{number|string}"]',
+      result: self.actual.errors[0].expected == 'number OR map{number OR string}',
     },
   },
 
@@ -113,10 +113,10 @@ test.suite({
       hello: 'no',
     },
     actual: v.JsonValidate(data, {
-      hello: v.Array(v.Optional('string')),
+      hello: v.Optional(v.Array('string')),
     }),
     expectThat: {
-      result: self.actual.errors[0].expected == 'Array[string?]',
+      result: self.actual.errors[0].expected == 'array[string]?',
     },
   },
 
