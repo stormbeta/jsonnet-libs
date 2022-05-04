@@ -149,6 +149,8 @@ local
 
   // jq-style representation of current context in object
   // @context: [{type: field|index, value: ...}]
+  //                   @field: string
+  //                   @index: number
   contextPath:: function(context)
     if std.length(context) == 0 then
       '.'
@@ -194,8 +196,8 @@ local
       else _schema;
     std.toString(traverse(schema)),
 
-  // Simple error injector, automatically includes expected and context fields
-  // super<VDATA> -> string|{LABEL: string} -> VDATA
+  // Simple error injector, automatically includes 'expected' and 'context' fields
+  // super<VDATA> + withError(string|{LABEL: string}) -> VDATA
   withError:: function(message)
     {
       local context = super.context,
@@ -216,7 +218,7 @@ local
 
   // Inject standard missing field error
   // All function validators should return this if VDATA.value is missing
-  // super<VDATA> -> VDATA
+  // super<VDATA> + withMissingError() -> VDATA
   withMissingError:: $.withError('Required field does not exist!'),
 
   bind:: {
@@ -296,7 +298,9 @@ local
           if std.type(result) == 'boolean' && result then
             vdata
           else if std.type(err) == 'string' then
-            $.withError(err % std.toString(vdata.value))
+            if std.length(std.findSubstr('%s', err)) == 0
+            then $.withError(err)
+            else $.withError(err % std.toString(vdata.value))
           else
             $.withError({ result:: result, value:: vdata.value } + err)
       ),
@@ -348,6 +352,7 @@ local
   // Check that all values in the array match the same schema (similar to Array<T> in java)
   // TODO: We should probably make this the default when encountering `[...]` syntax in schema
   //       It's extremely rare that anyone would want an array with an exact length and diferrent types for each positional element
+  // TODO: Rename to ArrayOf for consistency with MapOf?
   Array:: function(schema)
     function(vdata)
       vdata
@@ -388,7 +393,7 @@ local
   ,
 
 
-  // Validate if exists, otherwise ignore
+  // Validate field value if it exists, otherwise ignore
   // NOTE: Optional is special-cased by necessity
   // TODO: Allow specifying a default value
   Optional:: function(schema)
@@ -450,9 +455,10 @@ local
       vdata {
         schemaDescription:
           '{%s}' % std.join(', ', literalsArray),
-      } +
+      }
+      +
       if !std.objectHas(vdata, 'value') then
-        $.withMissingError(vdata)
+        $.withMissingError
       else
         if !std.member(literalsArray, vdata.value) then
           $.withError({
@@ -461,7 +467,7 @@ local
           })
         else {},
 
-  // Don't remove extra fields not in schema
+  // Validate schema as normal, but don't strip unknown data/fields
   ExtensibleMap:: function(schema)
     function(vdata)
       vdata +
@@ -479,11 +485,11 @@ local
           )
         }),
 
-  // Error if any fields in input but not in schema
+  // Validate schema as normal, but cause error if any unknown data/fields present
   // NOTE: this also de facto freezes the schema for the object
   StrictMap:: function(schema)
     function(vdata)
-      // Pass through to normal validation first, then check fields
+      // Pass through to normal validation first, then check for extra fields
       $.validate(vdata, schema) +
       { schemaDescription: 'StrictMap' } +
       if std.type(schema) != 'object' || std.type(vdata.value) != 'object' then
@@ -508,8 +514,10 @@ local
     local schemaType = std.type(schema);
 
     vdata
-    { schemaDescription: $.schemaToString(schema) } +
-    { errors+: if err != null then [err] else [] } +
+    { schemaDescription: $.schemaToString(schema) }
+    +
+    { errors+: if err != null then [err] else [] }
+    +
 
     // This must be done first, or else extensions like Optional will never
     // get the opportunity to handle missing values before it becomes an error
