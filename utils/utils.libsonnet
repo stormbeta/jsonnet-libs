@@ -1,5 +1,7 @@
 #!/usr/bin/env jsonnet
 
+// TODO: Add tests for newly added functions
+
 {
   log:: {
     // Everything in jsonnet is an expression with a meaningful return value
@@ -32,6 +34,17 @@
   combine:: function(parent, child) parent + child,
 
 
+  // Get last item of array
+  last:: function(array) array[std.length(array) - 1],
+
+
+  // Merge-reduce array of objects
+  mergeObjectArray:: function(objectArray)
+    assert std.all([std.type(item) == 'object' for item in objectArray]);
+    std.foldl(self.combine, objectArray, {}),
+
+
+  // Similar to `if ref in collection` in Python
   contains:: function(collection, ref)
     if std.type(collection) == 'object' then
       std.member(std.objectFields(collection), ref)
@@ -46,7 +59,7 @@
     else default,
 
 
-  // safe deep field navigation
+  // Safe deep field indexing using a list of keys
   safeGet:: function(object, fields, default={})
     if std.length(fields) > 0 && self.contains(object, fields[0])
     then (
@@ -62,13 +75,32 @@
 
   // Given a list of entries, merge-reduce all entries with matching values for the given key
   // Useful for appending overrides to lists of entries, e.g. kuberentes resources
-  mergeEntriesByKey:: function(key, entries)
+  combineEntriesByKey:: function(key, entries, mergeMethod=self.mergeObjectArray)
     [
-      std.foldl(function(acc, item) acc + item, group, {})
+      mergeMethod(group)
       for group in [
         std.filter(function(entry) entry[key] == name, entries)
         for name in std.set(std.map(function(entry) entry[key], entries))
       ]
+    ],
+
+
+  // Converts list of entries to object form using key for the key values
+  // Implicitly left-merges entries with the same key
+  entriesToObject:: function(key, entries, mergeMethod=self.mergeObjectArray)
+    local mergedEntries = self.combineEntriesByKey(key, entries, mergeMethod);
+    {
+      [entry[key]]: entry
+      for entry in mergedEntries
+    },
+
+
+  // Converts object to list of entries
+  // Injects keyName as a field to each entry
+  objectToEntries:: function(keyName, object)
+    [
+      object[key] { [keyName]: key }
+      for key in std.objectFields(object)
     ],
 
 
@@ -90,8 +122,4 @@
                 else object[field])
       for field in std.objectFields(object)
     },
-
-  // TODO: add entryList/object converters
-
-  // TODO: add entryList merge function from charon-config work
 }
