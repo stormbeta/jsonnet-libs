@@ -21,6 +21,6 @@ local assertions = assertAll([
   check(false, 'assertion3 failed'),
 ]);
 
-assert assertions.passed : std.join('\n', std.prune(assertions.messages));
+assert assertions.passed : std.join('\n', assertions.messages);
 
 {}
