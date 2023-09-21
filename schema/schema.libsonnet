@@ -161,7 +161,10 @@ local
           if contextEntry.type == 'index' then
             '[%i]' % contextEntry.value
           else
-            '.' + contextEntry.value,
+            if std.member(std.stringChars(contextEntry.value), '.') then
+              '.["' + contextEntry.value + '"]'
+            else
+              '.' + contextEntry.value,
         context,
         ''
       ),
