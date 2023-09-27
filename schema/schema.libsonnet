@@ -319,51 +319,6 @@ local
             $.withError({ result:: result, value:: vdata.value } + err)
       ),
 
-  // TODO: Needs examples + unit tests, or else deprecate
-  CustomFilter:: function(customFunction, customError, name='CustomFilter')
-    function(vdata)
-      vdata
-      { schemaDescription: name } + (
-        if !std.objectHas(vdata, 'value') then
-          $.withMissingError
-        else if !std.member(['array', 'object'], std.type(vdata.value)) then
-          $.withError({
-            'error': 'CustomFilter only applicable to arrays/objects',
-          })
-        else
-          // TODO: add check that customFunction has one vs two args for array vs map
-          local resultMap =
-            if std.type(vdata.value) == 'array' then
-              std.map(customFunction, vdata.value)
-            else
-              [
-                customFunction(field, vdata.value[field])
-                for field in std.objectFields(vdata.value)
-              ];
-          local result = std.foldl(
-            // If all booleans, result is true if all true, else false
-            // If any non-booleans, assume result is error and aggregate results as list
-            function(a, b)
-              local curr = std.type(a), return = std.type(b);
-              if curr == 'boolean' && return == 'boolean' then
-                a && b
-              else if curr == 'boolean' && return != 'boolean' then
-                [b]
-              else if curr != 'boolean' && return == 'boolean' then
-                a
-              else
-                a + [b]
-            ,
-            resultMap,
-            true
-          );
-          if result == true then
-            {}
-          else
-            // TODO: add error check that customError is an object
-            $.withError({ result:: result, value:: vdata.value } + customError)
-      ),
-
   // Check that all values in the array match the same schema (similar to Array<T> in java)
   // TODO: We should make this the default when encountering `[...]` syntax in schema
   //       It's extremely rare that anyone would want an array with an exact length and diferrent types for each positional element
@@ -413,24 +368,6 @@ local
     function(vdata)
       $.validate(vdata, schema) +
       { optional: true },
-
-
-  /* // WARNING: DEPRECATED
-  // This was only useful for adding custom validations and is way too complicated to be readable
-  And:: function(schemaA, schemaB)
-    function(vdata)
-      vdata {
-        schemaDescription:
-          $.schemaToString(schemaA) + ' && ' + $.schemaToString(schemaB),
-      } +
-      if !contains(vdata, 'value') then
-        $.withMissingError
-      else
-        local resultA = $.validate(vdata, schemaA);
-        if std.length(resultA.errors) == 0 then
-          $.validate(vdata, schemaB)
-        else
-          resultA, //*/
 
 
   // TODO: Consider deprecating due to complexity, especially as this does not cleanly compose
