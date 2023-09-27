@@ -150,9 +150,6 @@ local
 
 
 {
-  // Configuration
-  stripUnknownFields:: false,
-
   // VDATA => boolean
   // TODO: Unused?
   isValid:: function(vdata)
@@ -566,7 +563,7 @@ local
           else
             'any'
         )
-        for field in std.objectFields(if $.stripUnknownFields then schema else vdata.value)
+        for field in std.set(std.objectFields(schema) + std.objectFields(vdata.value))
       })
 
     // Recurse into fixed array schema - this will likely be a rare case
