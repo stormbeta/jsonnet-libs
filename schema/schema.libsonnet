@@ -22,17 +22,18 @@ Enum([VALUES...])
   Data must literally equal one of the provided values
 
 Optional(SCHEMA)
-  Will match data gainst provided schema if it exists
+  Will match data against provided schema if it exists
   If it doesn't exist, it will be ignored
-  If used on a field value, the field will not be in the output
+  If used on a missing field value, the field will not be in the output
 
 Array(SCHEMA)
   Will check that all values in the array match the schema
   (i.e. array must have homogenous type)
+  TODO: Make this the default behavior for arrays in schema
 
 MapOf(SCHEMA)
   Will check that all fields in the object have values of the same provided type
-  There's no schema for the keys since keys are always string in JSON
+  There's no schema for the keys since keys are always strings in JSON
 
 Either([SCHEMAS...])
   Will check that data matches at least one of the provided schemas
@@ -168,6 +169,7 @@ local
           if contextEntry.type == 'index' then
             '[%i]' % contextEntry.value
           else
+            // Use more explicit notation if key contains . character already
             if std.member(std.stringChars(contextEntry.value), '.') then
               '.["' + contextEntry.value + '"]'
             else
@@ -362,10 +364,9 @@ local
       ),
 
   // Check that all values in the array match the same schema (similar to Array<T> in java)
-  // TODO: We should probably make this the default when encountering `[...]` syntax in schema
+  // TODO: We should make this the default when encountering `[...]` syntax in schema
   //       It's extremely rare that anyone would want an array with an exact length and diferrent types for each positional element
-  // TODO: Rename to ArrayOf for consistency with MapOf?
-  Array:: function(schema)
+  ArrayOf:: function(schema)
     function(vdata)
       vdata
       { schemaDescription: 'array[%s]' % $.schemaToString(schema) } +
@@ -415,6 +416,7 @@ local
 
 
   // WARNING: DEPRECATED
+  // This was only useful for adding custom validations and is way too complicated to be readable
   And:: function(schemaA, schemaB)
     function(vdata)
       vdata {
@@ -431,7 +433,7 @@ local
           resultA,
 
 
-  // WARNING: DEPRECATED
+  // TODO: Consider deprecating due to complexity, especially as this does not cleanly compose
   // Check data against all provided schemas, and return the result of the first one that matches (or error if none)
   Either:: function(schemas)
     function(vdata)
@@ -464,6 +466,7 @@ local
       else
         valid[0],
 
+  // Check that value is one of a provided list of literals
   Enum:: function(literalsArray)
     function(vdata)
       vdata {
