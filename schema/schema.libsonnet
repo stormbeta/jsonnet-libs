@@ -1,5 +1,12 @@
 #!/usr/bin/env jsonnet
 
+// TODO: Consider deprecating composed validations - this adds a ton of complexity and doesn't actually compose intuitively
+//       I'm fairly certain there's some nasty bugs hiding in it as well due to limitations of jsonnet
+//       I'd rather see this library remain pretty basic as something I can actually use and maintain
+
+// TODO: Make ExtensibleMap the default, move current behavior (strip unknown fields) to new
+//       function PruneUnknown
+
 /*
 === Schema Reference ===
 
@@ -38,7 +45,7 @@ If you want to write your own function, it must look something like this:
 function(...)
   function(validate, vdata) -> vdata
      // CAUTION: vdata.value is allowed to be null here, and you must handle that case!
-     // 'validate' arg is the internal validator function with signature `validate(vdata, schema)`
+     // 'validate' arg is the default validator function with signature `validate(vdata, schema)`
      // NOTE: if you choose not to call the internal validator, you must ensure you return an intact vdata object yourself!
 
 Example identity function:
@@ -288,7 +295,8 @@ local
     },
   },
 
-  // Helper to make it easy to write basic custom conditionals
+  // TODO: Needs examples + unit tests, or else deprecate
+  // Helper to make it easier to write basic custom conditionals
   // Return true/non-string for validness
   CustomValidator:: function(customFunction, err='%s', name='CustomValidator')
     function(vdata)
@@ -308,6 +316,7 @@ local
             $.withError({ result:: result, value:: vdata.value } + err)
       ),
 
+  // TODO: Needs examples + unit tests, or else deprecate
   CustomFilter:: function(customFunction, customError, name='CustomFilter')
     function(vdata)
       vdata
@@ -405,6 +414,7 @@ local
       { optional: true },
 
 
+  // WARNING: DEPRECATED
   And:: function(schemaA, schemaB)
     function(vdata)
       vdata {
@@ -421,6 +431,7 @@ local
           resultA,
 
 
+  // WARNING: DEPRECATED
   // Check data against all provided schemas, and return the result of the first one that matches (or error if none)
   Either:: function(schemas)
     function(vdata)
@@ -470,6 +481,7 @@ local
           })
         else {},
 
+  // TODO: Consider making this the default?
   // Validate schema as normal, but don't strip unknown data/fields
   ExtensibleMap:: function(schema)
     function(vdata)
