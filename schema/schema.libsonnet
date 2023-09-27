@@ -26,7 +26,7 @@ Optional(SCHEMA)
   If it doesn't exist, it will be ignored
   If used on a missing field value, the field will not be in the output
 
-Array(SCHEMA)
+ArrayOf(SCHEMA)
   Will check that all values in the array match the schema
   (i.e. array must have homogenous type)
   TODO: Make this the default behavior for arrays in schema
@@ -39,6 +39,7 @@ Either([SCHEMAS...])
   Will check that data matches at least one of the provided schemas
 
 CustomValidator(FUNCTION(DATA)->[ERRORS...])
+  WARNING: This is discouraged and may be deprecated
   Uses provided function to validate data directly.
   If error array is empty, data is valid
 
@@ -568,7 +569,7 @@ local
 
     // Recurse into fixed array schema - this will likely be a rare case
     // as most arrays are not fixed length/positional
-    // TODO: Consider making this an alias for Array(...) instead
+    // TODO: Consider making this an alias for ArrayOf(...) instead
     //       and use a special type for fixed length / positional arrays
     else if schemaType == 'array' && dataType == 'array' then
       if std.length(schema) != std.length(vdata.value) then
@@ -609,9 +610,17 @@ local
     if std.length(result_vdata.errors) > 0 then
       { errors+: result_vdata.errors }
     else
-      result_vdata.value
-  ,
+      result_vdata.value,
 
+  // For passing to an assert call rather than validating in-line
+  AssertValidate:: function(data, schema)
+    local result_vdata = self.RawValidate(data, schema);
+    if std.length(result_vdata.errors) > 0 then
+      { message: '\n' + prettyPrintErrors(result_vdata.errors), passed: false }
+    else
+      { message: '', passed: true },
+
+  // Reconstructs and returns input data in-line
   Validate:: function(data, schema)
     local result_vdata = self.RawValidate(data, schema);
     if std.length(result_vdata.errors) > 0 then
