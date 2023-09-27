@@ -150,6 +150,9 @@ local
 
 
 {
+  // Configuration
+  stripUnknownFields:: false,
+
   // VDATA => boolean
   // TODO: Unused?
   isValid:: function(vdata)
@@ -189,9 +192,8 @@ local
         if std.length(_schema) != 1 then
           error 'validators must have one argument'
         else
-          // TODO: This is a horrible hack
-          //       But there might not be a better way, we need to be able to inspect
-          //       schema top-down to report useful errors
+          // NOTE: This is a horrible hack, but might be unavoidable
+          //       We need to be able to inspect schema top-down to report useful errors
           local inspect = _schema({ context: [] });
           if std.objectHas(inspect, 'schemaDescription') then
             inspect.schemaDescription
@@ -233,6 +235,7 @@ local
   // super<VDATA> + withMissingError() -> VDATA
   withMissingError:: $.withError('Required field does not exist!'),
 
+  // Functions to wrap data in vdata structure
   bind:: {
     // === Validator ===
     // schema:: (VDATA -> VDATA) -> schema -> (VDATA -> VDATA)
@@ -408,14 +411,13 @@ local
 
   // Validate field value if it exists, otherwise ignore
   // NOTE: Optional is special-cased by necessity
-  // TODO: Allow specifying a default value
   Optional:: function(schema)
     function(vdata)
       $.validate(vdata, schema) +
       { optional: true },
 
 
-  // WARNING: DEPRECATED
+  /* // WARNING: DEPRECATED
   // This was only useful for adding custom validations and is way too complicated to be readable
   And:: function(schemaA, schemaB)
     function(vdata)
@@ -430,10 +432,11 @@ local
         if std.length(resultA.errors) == 0 then
           $.validate(vdata, schemaB)
         else
-          resultA,
+          resultA, //*/
 
 
   // TODO: Consider deprecating due to complexity, especially as this does not cleanly compose
+  //       More relevant than And behavior, as some things may have optionally different layouts
   // Check data against all provided schemas, and return the result of the first one that matches (or error if none)
   Either:: function(schemas)
     function(vdata)
@@ -484,7 +487,7 @@ local
           })
         else {},
 
-  // TODO: Consider making this the default?
+  /* // Deprecated due to being the new default
   // Validate schema as normal, but don't strip unknown data/fields
   ExtensibleMap:: function(schema)
     function(vdata)
@@ -501,10 +504,10 @@ local
             std.objectFields(vdata.value),
             std.objectFields(schema)
           )
-        }),
+        }), //*/
 
   // Validate schema as normal, but cause error if any unknown data/fields present
-  // NOTE: this also de facto freezes the schema for the object
+  // NOTE: this also implicitly freezes the schema for the object
   StrictMap:: function(schema)
     function(vdata)
       // Pass through to normal validation first, then check for extra fields
@@ -558,9 +561,12 @@ local
       $.bind.object({
         [field]: $.validate(
           $.bind.fieldValue(vdata, field),
-          schema[field]
+          if std.objectHas(schema, field) then
+            schema[field]
+          else
+            'any'
         )
-        for field in std.objectFields(schema)
+        for field in std.objectFields(if $.stripUnknownFields then schema else vdata.value)
       })
 
     // Recurse into fixed array schema - this will likely be a rare case
