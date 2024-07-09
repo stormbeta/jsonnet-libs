@@ -122,4 +122,11 @@
                 else object[field])
       for field in std.objectFields(object)
     },
+
+
+  // Find index of entry matching conditional in array
+  // Returns -1 if none found
+  indexOf:: function(conditional, array)
+    local results = std.find(true, std.map(conditional, array));
+    if std.length(results) == 0 then -1 else results[0],
 }
