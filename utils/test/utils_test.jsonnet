@@ -5,7 +5,7 @@ local utils = (import '../utils.libsonnet') {
     level:: self.TRACE,
   },
 };
-local test = import 'jsonnetunit/test.libsonnet';
+local test = import '../jsonnetunit/jsonnetunit/test.libsonnet';
 
 test.suite({
   local log = utils.log,
@@ -61,7 +61,7 @@ test.suite({
   },
 
   'test entries merge': {
-    actual: utils.mergeEntriesByKey('name', [{
+    actual: utils.combineEntriesByKey('name', [{
       name: 'one',
       value: 'no',
     }, {

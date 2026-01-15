@@ -53,20 +53,27 @@
 
 
   // safe field reference with default if field not present
-  optional:: function(object, field, default={})
+  //   local cfg = { configField: "value" };
+  //   ...
+  //   utils.optional(config, 'configField', {}) == "value"
+  //   utils.optional(config, 'missingField', "none") == "none"
+  optional:: function(object, field, default={}, handler=function(v) v)
     if self.contains(object, field)
-    then object[field]
+    then handler(object[field])
     else default,
 
-
   // Safe deep field indexing using a list of keys
-  safeGet:: function(object, fields, default={})
+  //   local cfg = { outer: { inner: { most: "value" } } };
+  //   ...
+  //   utils.safeGet(cfg, ['outer', 'inner', 'most'], {}) == "value"
+  //   utils.safeGet(cfg, ['outer', 'oops', 'most'], {}) == {}
+  safeGet:: function(object, fields, default={}, handler=function(v) v)
     if std.length(fields) > 0 && self.contains(object, fields[0])
     then (
       if std.length(fields) == 1 then
-        self.optional(object, fields[0], default)
+        handler(object[fields[0]])
       else
-        self.safeGet(self.optional(object, fields[0], null),
+        self.safeGet(object[fields[0]],
                      std.slice(fields, 1, std.length(fields), 1),
                      default)
     )
