@@ -75,7 +75,8 @@
       else
         self.safeGet(object[fields[0]],
                      std.slice(fields, 1, std.length(fields), 1),
-                     default)
+                     default,
+                     handler)
     )
     else default,
 

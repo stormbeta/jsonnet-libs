@@ -37,6 +37,18 @@ test.suite({
     expect: ['default', 'default', null],
   },
 
+  'test safeGet/optional custom handler': {
+    local upcase = function(_) std.asciiUpper(_),
+    actual: [
+      utils.optional({ a: 'optional' }, 'a', 'bad', upcase),
+      utils.safeGet({ a: { b: 'safeGet' } }, ['a', 'b'], 'bar', upcase),
+    ],
+    expect: [
+      'OPTIONAL',
+      'SAFEGET',
+    ],
+  },
+
   'test contains function': {
     actual: [
       // true
