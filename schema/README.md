@@ -43,7 +43,7 @@ local data = {
 t.TypeCheck(schema, data),
 ```
 
-This will pass, returning data in-place. But let's say we accidentally made the first value in
+This will pass, returning data in-place. But if we accidentally made the first value in
 entries a string instead of a number, e.g. `value: "1"`:
 
 ```
@@ -62,7 +62,7 @@ VALUE:    "1"
 
 - Path is a `jq`-style reference.
 
-- The `?` in the "expected" field signifies that this type was optional
+- The `?` in the "expected" field signifies that this field or item was optional
 
 
 **Custom Validator Example**
@@ -133,38 +133,48 @@ Type Functions
 Helpers to specify other kinds of constraints
 
 Enum([VALUES...])
+
   Data must equal one of the provided literals
 
 Optional(SCHEMA)
+
   Will match data against provided schema if it exists
   If it doesn't exist, it will be ignored
   If used on a missing field value, the field will not be in the output
 
 ArrayOf(SCHEMA)
+
   Will check that all values in the array match the schema
   (i.e. array must have homogenous type)
 
 MapOf(SCHEMA)
+
   Will check that all fields in the object have values of the same provided type
   There's no schema for the keys since keys are always strings in JSON
 
 Either([SCHEMAS...])
-  Will check that data matches at least one of the provided schemas
-  TODO: Rename to Or
 
-CustomValidator(FUNCTION(DATA)=>(bool|string|err), err='%s', name='CustomValidator')
+  Will check that data matches at least one of the provided schemas
+
+All([SCHEMAS...])
+
+  Checks that all schemas match - mostly intended for use with CustomValidators
+
+Validator(NAME, function(DATA) => RESULT_OBJECT)
+
+  Custom validator helper
+    Name: type name or minimal descriptor used for ref in other errors
+    RESULT_OBJECT: {
+      result: boolean condition,
+      expected: string describing what was expected,
+      message: descriptive error message
+    }
+
   Uses provided function to validate data directly.
   If provided function returns `true`, data is considered valid
   If it returns anything else, input data will be considered invalid
   `err` is used for the resulting error message
   if it contains `%s` this will be replaced by the stringified version of the input data
-
-TODO:
-
-Or(schemaA, schemaB) => Any([schemaA, schemaB])
-Any([schemas...])
-And(schemaA, schemaB)
-Not(schemaA)
 
 
 You can also safely nest type functions

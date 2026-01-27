@@ -1,12 +1,15 @@
-#!/usr/bin/env jsonnet -J jsonnetunit
+#!/usr/bin/jsonnet -J jsonnetunit/jsonnetunit
 
 local utils = (import '../utils/utils.libsonnet') {
   log+: {
     level:: self.TRACE,
   },
 };
-local v = import 'schema.libsonnet';
-local test = import 'jsonnetunit/test.libsonnet';
+local v = (import 'schema.libsonnet') {
+  JsonValidate:: function(data, schema) self.TypeCheck(schema, data, 'json'),
+};
+//local test = import 'jsonnetunit/test.libsonnet';
+local test = import 'test.libsonnet';
 
 
 test.suite({
@@ -129,6 +132,16 @@ test.suite({
     },
   },
 
+  'test StrictMap errors on unknown fields': {
+    actual: v.JsonValidate({
+      expected: 'field',
+      unknown: 'field',
+    }, v.StrictMap({ expected: 'string' })),
+    expectThat: {
+      result: std.length(self.actual.errors) > 0 && self.actual.errors[0].fields[0] == 'unknown',
+    },
+  },
+
   'test optional field': {
     local datas = [
       // Value exists
@@ -147,6 +160,24 @@ test.suite({
         std.length(self.actual[0].errors) == 0 && std.objectHas(self.actual[0].value, 'option'),
         std.length(self.actual[1].errors) > 0,
         std.length(self.actual[2].errors) == 0 && !std.objectHas(self.actual[2].value, 'option'),
+      ]),
+    },
+  },
+
+  local schema_entriesToObject = function(key) v.ArrayOf({ [key]: 'string' }),
+  'test schema_entriesToObject': {
+    local data = [
+      [{ name: 'hello' }, { key: 'bye' }],
+      [{ name: 'hello' }, { name: 'bye' }],
+    ],
+    actual: [
+      v.TypeCheck(schema_entriesToObject('name'), entries, mode='json')
+      for entries in data
+    ],
+    expectThat: {
+      result: all([
+        self.actual[0].errors[0].path == '[1].name',
+        !std.member(self.actual[1], 'errors'),
       ]),
     },
   },

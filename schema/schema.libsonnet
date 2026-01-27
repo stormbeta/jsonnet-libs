@@ -120,7 +120,6 @@ local
   // All function validators should return this if VDATA.value is missing
   // super<VDATA> + withMissingError() -> VDATA
   withMissingError:: $.withError('Required field does not exist!'),
-  valueMissing:: function(vdata) !std.objectHas(vdata, 'value'),
 
   // Functions to wrap data in vdata structure
   bind:: {
@@ -183,19 +182,18 @@ local
     function(vdata)
       vdata { schemaDescription: name } +
       (
-        if $.valueMissing(vdata) then
+        if !('value' in vdata) then
           $.withMissingError
         else
-          local result = customFunction(vdata.value);
+          //local result = customFunction(vdata.value);
+          local result = { v:: vdata.value } + customFunction;
           if std.type(result) == 'boolean' && result then
             vdata
           else if std.type(result) == 'object' && 'result' in result then
             if result.result then
               vdata
             else
-              $.withError(result { result:: null })
-          // Allow extending error with arbitrary fields from function result
-          //$.withError({ result:: result, value:: vdata.value } + result)
+              $.withError(result { actual: self.v, result:: null })
           else
             // Treat result as string-like error message or value
             $.withError(std.toString(result))
@@ -208,7 +206,7 @@ local
     function(vdata)
       vdata
       { schemaDescription: 'array[%s]' % $.schemaToString(schema) } +
-      if !std.objectHas(vdata, 'value') then
+      if !('value' in vdata) then
         $.withMissingError
       else if std.type(vdata.value) != 'array' then
         $.withError({
@@ -231,7 +229,7 @@ local
     function(vdata)
       vdata
       { schemaDescription: 'map{%s}' % $.schemaToString(schema) } +
-      if !contains(vdata, 'value') then
+      if !('value' in vdata) then
         $.withMissingError
       else
         if std.type(vdata.value) != 'object' then
@@ -268,9 +266,9 @@ local
       );
       vdata {
         schemaDescription:
-          std.join(' OR ', ([$.schemaToString(s) for s in schemas])),
+          std.join(' | ', ([$.schemaToString(s) for s in schemas])),
       } +
-      if !contains(vdata, 'value') then
+      if !('value' in vdata) then
         $.withMissingError
       else if std.length(valid) == 0 then
         $.withError({
@@ -284,6 +282,40 @@ local
       else
         valid[0],
 
+  // Check all schemas and return error from the first failed match
+  // Limited utility - prefer specifying all requirements in custom validators directly rather than trying to combine them
+  All:: function(schemas)
+    // return first element matching condition, without eval'ing whole list
+    local lazyFind(list, condition) =
+      if list == [] then null
+      else if condition(list[0]) then list[0]
+      else lazyFind(list[1:], condition);
+    function(vdata)
+      local results = std.map(
+        function(schema) $.validate(vdata, schema), schemas
+      );
+      local valid = std.all([
+        std.length(_vdata.errors) == 0
+        for _vdata in results
+      ]);
+      vdata {
+        schemaDescription:
+          std.join(' AND ', ([$.schemaToString(s) for s in schemas])),
+      } +
+      if !('value' in vdata) then
+        $.withMissingError
+      else if std.type(schemas) != 'array' then
+        $.withError({
+          'error': 'All([SCHEMAS...]) expects list, got %s' % std.type(schemas),
+        })
+      else if !valid then
+        // Some custom functions may fail if using All(...) to
+        // combine a standard type check with the custom validator
+        // as the custom validator may assume the data type
+        lazyFind(results, function(r) std.length(r.errors) > 0)
+      else
+        vdata,
+
   // Check that value is one of a provided list of literals
   Enum:: function(literalsArray)
     function(vdata)
@@ -292,7 +324,7 @@ local
           '{%s}' % std.join(', ', literalsArray),
       }
       +
-      if !std.objectHas(vdata, 'value') then
+      if !('value' in vdata) then
         $.withMissingError
       else
         if !std.member(literalsArray, vdata.value) then
@@ -346,7 +378,7 @@ local
       schema(vdata)
 
     // Check if field is missing
-    else if !contains(vdata, 'value') then
+    else if !('value' in vdata) then
       $.withError({
         'error': 'required field does not exist!',
       })
@@ -359,7 +391,8 @@ local
       $.bind.object({
         [field]: $.validate(
           $.bind.fieldValue(vdata, field),
-          if std.objectHas(schema, field) then
+          //if std.objectHas(schema, field) then
+          if field in schema then
             schema[field]
           else
             'any'
