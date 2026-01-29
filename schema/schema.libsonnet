@@ -17,23 +17,26 @@ local
       []
     ),
 
+  indexedFilterMap = function(conditional, func, array)
+    [func(i, array[i]) for i in std.find(true, std.map(conditional, array))]
+;
+
+
+{
   // ArrayOf(MapOf(string)) => string
-  prettyPrintErrors = function(errors)
+  prettyPrintErrors:: function(errors, indent='')
     std.join('\n\n', [
       local maxLength = function(a, b) std.max(a, std.length(b));
       local maxLabelLen = std.foldl(maxLength, std.objectFields(err), 0) + 1;
       std.join('\n', [
         local labelLen = std.length(label);
-        std.asciiUpper(label) + ':'
+        indent + std.asciiUpper(label) + ':'
         + std.repeat(' ', maxLabelLen - labelLen) + err[label]
         for label in std.objectFields(err)
       ])
       for err in errors
-    ]) + '\n'
-;
+    ]) + '\n',
 
-
-{
   // jq-style representation of current context in object
   // @context: [{type: field|index, value: ...}]
   //                   @field: string
@@ -325,6 +328,33 @@ local
             'error': 'Value mismatch',
           })
         else {},
+  Equals:: self.Literal,
+
+  HasNamedEntry:: function(match, key='name')
+    local name = match[key];
+    function(vdata)
+      vdata { schemaDescription: 'HasNamedEntry()' } +
+      if !('value' in vdata) then $.withMissingError
+      else if std.type(vdata.value) != 'array' then
+        $.withError('Cannot check entries of non-array type')
+      else
+        local entryMatches = indexedFilterMap(
+          function(e) std.type(e) == 'object' && key in e && e[key] == name,
+          function(i, e) $.validate($.bind.index(vdata, i),
+                                    match { [key]: $.Equals(match[key]) }),
+          vdata.value
+        );
+        if std.length(entryMatches) == 0 then
+          $.withError({
+            result: false,
+            'error': "No entry with { '%s': '%s' } found in array" % [key, name],
+          })
+        else
+          local failed = std.filter(function(e) std.length(e.errors) > 0, entryMatches);
+          if std.length(failed) == 0 then
+            entryMatches[0]
+          else
+            failed[0],
 
   // Check that value is one of a provided list of literals
   Enum:: function(literalsArray)
@@ -452,7 +482,7 @@ local
   TypeCheck:: function(schema, data, mode=self.mode)
     local result_vdata = self.RawValidate(data, schema);
     if std.length(result_vdata.errors) > 0 then
-      local err = '\n' + prettyPrintErrors(result_vdata.errors);
+      local err = '\n' + $.prettyPrintErrors(result_vdata.errors);
       if mode == 'warn' then
         std.trace(err, result_vdata.value)
       else if mode == 'json' then

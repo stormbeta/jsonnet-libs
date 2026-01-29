@@ -37,6 +37,9 @@
   // Get last item of array
   last:: function(array) array[std.length(array) - 1],
 
+  // Combines std.filter with std.mapWithIndex into one operation
+  indexedFilterMap:: function(conditional, func, array)
+    [func(i, array[i]) for i in std.find(true, std.map(conditional, array))],
 
   // Merge-reduce array of objects
   mergeObjectArray:: function(objectArray)
