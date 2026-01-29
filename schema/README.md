@@ -261,3 +261,11 @@ CONTEXT:
 //       I'm fairly certain there's some nasty bugs hiding in it as well due to limitations of jsonnet
 //       I'd rather see this library remain pretty basic as something I can actually use and maintain
 
+
+---
+
+# Thoughts
+
+Consider renaming to something like constraints.libsonnet?
+
+Also consider reworking into something more meant for unit testing

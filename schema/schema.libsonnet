@@ -178,22 +178,25 @@ local
   },
 
   // Helper to make it easier to write basic custom conditionals
-  CustomValidator:: function(name, customFunction)
+  Validator:: function(schemaDescription, customFunction)
     function(vdata)
-      vdata { schemaDescription: name } +
+      vdata { schemaDescription: schemaDescription } +
       (
         if !('value' in vdata) then
           $.withMissingError
         else
-          //local result = customFunction(vdata.value);
-          local result = { v:: vdata.value } + customFunction;
+          local ftype = std.type(customFunction);
+          local result =
+            if ftype == 'object'
+            then { value:: vdata.value } + customFunction
+            else customFunction(vdata.value);
           if std.type(result) == 'boolean' && result then
             vdata
           else if std.type(result) == 'object' && 'result' in result then
             if result.result then
               vdata
             else
-              $.withError(result { actual: self.v, result:: null })
+              $.withError(result { actual: vdata.value, result:: null })
           else
             // Treat result as string-like error message or value
             $.withError(std.toString(result))
@@ -315,6 +318,20 @@ local
         lazyFind(results, function(r) std.length(r.errors) > 0)
       else
         vdata,
+
+  Literal:: function(literal)
+    function(vdata)
+      vdata {
+        schemaDescription: vdata.value,
+      }
+      + if !('value' in vdata) then
+        $.withMissingError
+      else
+        if vdata.value != literal then
+          $.withError({
+            'error': 'Value mismatch',
+          })
+        else {},
 
   // Check that value is one of a provided list of literals
   Enum:: function(literalsArray)
@@ -452,4 +469,6 @@ local
         error err
     else
       result_vdata.value,
+  Validate:: function(data, schema, mode=self.mode)
+    self.TypeCheck(data, schema, mode),
 }
