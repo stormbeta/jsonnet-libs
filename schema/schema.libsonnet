@@ -6,7 +6,7 @@
 local
   contains = function(collection, ref)
     if std.type(collection) == 'object' then
-      std.objectHas(collection, ref)
+      ref in collection
     else
       std.member(collection, ref),
 
@@ -29,14 +29,7 @@ local
         for label in std.objectFields(err)
       ])
       for err in errors
-    ]) + '\n',
-
-
-  // safe field reference with default if field not present
-  maybeGet = function(object, field, default={})
-    if std.objectHas(object, field)
-    then object[field]
-    else default
+    ]) + '\n'
 ;
 
 
@@ -78,7 +71,7 @@ local
           // NOTE: This is a horrible hack, but might be unavoidable
           //       We need to be able to inspect schema top-down to report useful errors
           local inspect = _schema({ context: [] });
-          if std.objectHas(inspect, 'schemaDescription') then
+          if 'schemaDescription' in inspect then
             inspect.schemaDescription
           else
             '<function>'
@@ -167,12 +160,12 @@ local
       value+: {
         [field]: vdata_map[field].value
         for field in std.objectFields(vdata_map)
-        if !(maybeGet(vdata_map[field], 'optional', false) && !contains(vdata_map[field], 'value'))
+        if !(std.get(vdata_map[field], 'optional', false) && !contains(vdata_map[field], 'value'))
       },
       errors+: combine([
         field_vdata.errors
         for field_vdata in std.objectValues(vdata_map)
-        if !(maybeGet(field_vdata, 'optional', false) && !contains(field_vdata, 'value'))
+        if !(std.get(field_vdata, 'optional', false) && !contains(field_vdata, 'value'))
       ]),
     },
   },
@@ -408,7 +401,6 @@ local
       $.bind.object({
         [field]: $.validate(
           $.bind.fieldValue(vdata, field),
-          //if std.objectHas(schema, field) then
           if field in schema then
             schema[field]
           else
