@@ -115,7 +115,14 @@ local
   // Inject standard missing field error
   // All function validators should return this if VDATA.value is missing
   // super<VDATA> + withMissingError() -> VDATA
-  withMissingError:: $.withError('Required field does not exist!'),
+  withMissingError:: {
+    local ctx = self,
+    errors+: [{
+      path: $.contextPath(ctx.context),
+      'error': 'Required field does not exist: ' + self.path,
+      expected: ctx.schemaDescription,
+    }],
+  },
 
   // Functions to wrap data in vdata structure
   bind:: {
@@ -318,7 +325,7 @@ local
   Literal:: function(literal)
     function(vdata)
       vdata {
-        schemaDescription: vdata.value,
+        schemaDescription: std.toString(literal),
       }
       + if !('value' in vdata) then
         $.withMissingError
@@ -419,9 +426,7 @@ local
 
     // Check if field is missing
     else if !('value' in vdata) then
-      $.withError({
-        'error': 'required field does not exist!',
-      })
+      $.withMissingError
 
     else if schema == 'any' then
       {}
@@ -459,17 +464,16 @@ local
           )
         )
 
-    //else if std.member(['array', 'object'], schema) && std.member(['array', 'object'], dataType) then {}
     else
       if dataType == schema then
         {}
       else
         $.withError({
           path: $.contextPath(vdata.context),
-          actual: dataType,
-          value: (if dataType == 'string'
-                  then '"' + vdata.value + '"'
-                  else std.toString(vdata.value)),
+          found: dataType,
+          actual: (if dataType == 'string'
+                   then '"' + vdata.value + '"'
+                   else std.toString(vdata.value)),
         }),
 
   RawValidate:: function(input, schema)
@@ -492,5 +496,5 @@ local
     else
       result_vdata.value,
   Validate:: function(data, schema, mode=self.mode)
-    self.TypeCheck(data, schema, mode),
+    self.TypeCheck(schema, data, mode),
 }
