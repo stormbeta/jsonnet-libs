@@ -55,13 +55,23 @@
       std.member(collection, ref),
 
 
+  // Find objects in array with field keyName matching keyValue
+  // Returns empty array if none found
+  findBy:: function(objectArray, keyName, keyValue)
+    [
+      entry
+      for entry in objectArray
+      if std.isObject(entry) && keyName in entry && entry[keyName] == keyValue
+    ],
+
+
   // safe field reference with default if field not present
   //   local cfg = { configField: "value" };
   //   ...
   //   utils.optional(config, 'configField', {}) == "value"
   //   utils.optional(config, 'missingField', "none") == "none"
   optional:: function(object, field, default={}, handler=function(v) v)
-    if self.contains(object, field)
+    if field in object
     then handler(object[field])
     else default,
 
@@ -106,8 +116,24 @@
     },
 
 
-  // Converts object to list of entries
-  // Injects keyName as a field to each entry
+  /* Inverse operator of entriesToObject
+  Converts object to list of entries
+  Injects keyName as a field to each entry
+    local obj = {
+      one: {
+        name: 'one',
+        value: 'xyz',
+      },
+      two: {
+        name: 'two',
+        value: 'abc',
+      },
+    }
+    utils.objectToEntries('name', obj) == [
+      { name: 'one', value: 'xyz' },
+      { name: 'two', value: 'abc' },
+    ]
+  //*/
   objectToEntries:: function(keyName, object)
     [
       object[key] { [keyName]: key }
@@ -115,7 +141,8 @@
     ],
 
 
-  // Non-recursive version of std.prune(...)
+  // std.prune wipes all fields with a null value,
+  // this non-recursive version only deletes top-level fields that are null
   shallowPrune:: function(object)
     {
       [field]: object[field]
