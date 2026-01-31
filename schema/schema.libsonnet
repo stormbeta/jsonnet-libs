@@ -322,7 +322,7 @@ local
       else
         vdata,
 
-  Literal:: function(literal)
+  Literal:: function(literal, message='Value mismatch')
     function(vdata)
       vdata {
         schemaDescription: std.toString(literal),
@@ -332,10 +332,36 @@ local
       else
         if vdata.value != literal then
           $.withError({
-            'error': 'Value mismatch',
+            'error': message,
+            found: vdata.value,
           })
         else {},
   Equals:: self.Literal,
+
+  AllowedFields:: function(fields)
+    function(vdata)
+      vdata { schemaDescription: 'AllowedFields(%s)' % std.join(',', fields) } +
+      if !('value' in vdata) then
+        $.withMissingError
+      else
+        if !std.isObject(vdata.value) then
+          $.withError({
+            expected: 'object containing any of these fields: ' + std.toString(fields),
+            found: std.type(vdata.value),
+          })
+        else
+          local diff = [
+            field
+            for field in std.objectFields(vdata.value)
+            if !(std.member(fields, field))
+          ];
+          if std.length(diff) != 0 then
+            $.withError({
+              expected: 'Only fields named ' + std.toString(fields),
+              disallowed: diff,
+            })
+          else
+            {},
 
   HasNamedEntry:: function(match, key='name')
     local name = match[key];
