@@ -3,6 +3,7 @@
 // TODO: Add tests for newly added functions
 
 {
+  version:: '2.2',
   log:: {
     // Everything in jsonnet is an expression with a meaningful return value
     // So logging should wrap some kind of actual value and return it in-place
@@ -75,24 +76,47 @@
     then handler(object[field])
     else default,
 
-  // Safe deep field indexing using a list of keys
-  //   local cfg = { outer: { inner: { most: "value" } } };
+  // Safe deep field/array indexing using a list of keys
+  // collection: array | object
+  // path: [string|number|object] | string
+  //   for each item in path array:
+  //     string: use as field name if current target is an object
+  //     number: use as index if current target is an array
+  //     object: use to find an object by the given key-values in an array
+  //     If none of these match or types don't align, returns default
+  //   path is string: alias for utils.optional
+  //   local cfg = { top: "top_value", outer: { inner: { most: "value" } } };
   //   ...
   //   utils.safeGet(cfg, ['outer', 'inner', 'most'], {}) == "value"
   //   utils.safeGet(cfg, ['outer', 'oops', 'most'], {}) == {}
-  safeGet:: function(object, fields, default={}, handler=function(v) v)
-    if std.length(fields) > 0 && self.contains(object, fields[0])
-    then (
-      if std.length(fields) == 1 then
-        handler(object[fields[0]])
+  //   utils.safeGet(cfg, 'top', "") == "top_value"
+  //   utils.safeGet(cfg, 'missing', "default") == "default"
+  safeGet:: function(collection, path, default={}, handler=function(v) v)
+    local pathLength = std.length(path);
+    if !std.isArray(path) then
+      self.optional(collection, path, default, handler)
+    else if pathLength == 0 then
+      default
+    else
+      local head = path[0];
+      local keyName = std.objectFields(head)[0],
+            keyValue = head[keyName],
+            found = self.findBy(collection, keyName, keyValue);
+      local next =
+        if (std.isString(head) && std.isObject(collection) && head in collection)
+           || (std.isNumber(head) && std.isArray(collection) && std.length(collection) >= head + 1) then
+          [true, collection[head]]
+        else if std.isObject(head) && std.isObject(collection) && std.length(std.objectFields(head)) == 1 && std.length(found) == 1 then
+          [true, found[0]]
+        else
+          [false, default];
+      if !next[0] then
+        default
+      else if pathLength > 1 then
+        self.safeGet(next[1], self.tail(path), default, handler)
       else
-        self.safeGet(object[fields[0]],
-                     std.slice(fields, 1, std.length(fields), 1),
-                     default,
-                     handler)
-    )
-    else default,
-
+        handler(next[1])
+  ,
 
   // Given a list of entries, merge-reduce all entries with matching values for the given key
   // Useful for appending overrides to lists of entries, e.g. kuberentes resources
