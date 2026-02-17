@@ -9,8 +9,12 @@
   spec:: (import 'spec.libsonnet') { mode: 'json' },
   filename: std.thisFile,
 
+  // NOTE: You cannot use something like std.all to throw error if tests fail
+  //       because jsonnet is lazily evaluated, meaning the very first test to fail
+  //       will cause it to abort with an error instead of running all tests
+  // TODO: Could I trick it by manifesting the last item in the array and AND'ing it with std.all?
   RunTests(tests)::
-    local results = self.TestResults(tests);
+    local results = self.test_results(tests);
     std.trace(
       ('\n === %s === \n' % self.filename) +
       std.join('\n', std.map(function(r) r.logLine, results)),
@@ -20,7 +24,7 @@
         false
     ),
 
-  TestResults(tests):: [
+  test_results(tests):: [
     local assertThat = function(c)
       if 'assertThat' in c then
         if c.assertThat then {} else {

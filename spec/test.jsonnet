@@ -1,7 +1,7 @@
 #!/usr/bin/jsonnet -J jsonnetunit/jsonnetunit
 
 local utils = (import '../utils/utils.libsonnet');
-local spec = (import 'spec.libsonnet') { mode: 'json' };
+local spec = (import 'spec_extended.libsonnet') { mode: 'json' };
 local v = spec;
 
 local TestSuite = (import 'testsuite.libsonnet') { filename: std.thisFile };
@@ -19,24 +19,39 @@ TestSuite.RunTests({
     [true, 'boolean'],
     [null, 'null'],
   ],
-  'test basic primitives': [
+
+  // Old behavior was that strings were treated as type names by default
+  // Now we want all strings to be literals by default, and types should be explicit
+  // At least when placed directly in the spec
+  'test primitive type behavior and naming': [
     {
       value: t[0],
       equals: spec.Validate(t[0], spec.Is(t[1])),
     }
     for t in types
-  ],
-
-  // Old behavior was that strings were treated as type names by default
-  // Now we want all strings to be literals by default, and types should be explicit
-  // At least when placed directly in the spec
-  "test strings matching primitive type names aren't special": [
+  ] + [
     {
       value: t[0],
       match: v.Any,
       assertThat: v.RawValidate(t[0], t[1]).failed,
     }
     for t in types
+  ],
+
+  'test type aliases': [
+    {
+      value: t[0],
+      match: v.Any,
+      assertThat: !v.RawValidate(t[0], t[1]).failed,
+    }
+    for t in [
+      ['a-string', v.String],
+      [0, v.Number],
+      [[], v.Array],
+      [{}, v.Object],
+      [true, v.Boolean],
+      [null, v.Null],
+    ]
   ],
 
   'test missing field': {
@@ -55,11 +70,11 @@ TestSuite.RunTests({
   },
   'test generic array template': [
     {
-      value: spec.Validate(data, { myArray: v.Array('string') }),
+      value: spec.Validate(data, { myArray: v.ArrayOf('string') }),
       equals: data,
     },
     {
-      value: spec.Validate(data, { myArray: v.Array('number') }).errors[0],
+      value: spec.Validate(data, { myArray: v.ArrayOf('number') }).errors[0],
       match: { path: '.myArray[0]' },
     },
   ],
@@ -71,9 +86,11 @@ TestSuite.RunTests({
     },
     value: [
       spec.Validate(data, v.MapOf('string')),
+      spec.Validate(data, v.MapOf(v.String)),
       spec.Validate(data, v.MapOf('array')).errors[0],
     ],
     match: [
+      data,
       data,
       { path: '.blue' },
     ],
@@ -87,7 +104,7 @@ TestSuite.RunTests({
       ],
     },
     value: spec.Validate(data, {
-      hello: v.Array(v.MapOf('string')),
+      hello: v.ArrayOf(v.MapOf('string')),
     }).errors[0],
     match: {
       path: '.hello[1].bad',
@@ -111,7 +128,7 @@ TestSuite.RunTests({
       hello: 'no',
     },
     value: spec.Validate(data, {
-      hello: v.Optional(v.Array('string')),
+      hello: v.Optional(v.ArrayOf('string')),
     }).errors[0],
     match: {
       expected: 'array[string]?',
