@@ -3,7 +3,7 @@
 local utils = (import 'utils.libsonnet') {
   log+: { level:: self.TRACE },
 };
-local test = (import '../testsuite.libsonnet') { filename: std.thisFile };
+local test = (import 'testsuite.libsonnet') { filename: std.thisFile };
 
 test.RunTests({
   local log = utils.log,
@@ -52,11 +52,10 @@ test.RunTests({
     { value: utils.findBy(entries, 'key', 'one')[0].value, equals: 1 },
     { value: utils.findBy(entries, 'alt', 'zero')[0], match: { key: 'oops' } },
     { value: utils.findBy(entries, 'value', null)[0], match: { Null: true } },
-    { value: utils.findBy(entries, 'key', 'one'), match: test.spec.Any, assertThat: std.length(self.value) == 2 },
+    { value: utils.findBy(entries, 'key', 'one'), assertThat: std.length(self.value) == 2 },
   ],
   'test safeGet entry mapping': [
     { value: utils.safeGet(entries, { key: 'oops' }, null), match: { key: 'oops' } },
-    //{ value: utils.safeGet(entries, { key: 'one' }, null), match: { key: 'oops' } },
   ],
 
   'test safeGet edge cases': {
@@ -125,15 +124,18 @@ test.RunTests({
   },
 
   local iMap = [1, -5, 5, 2, -3, 0],
-  'test indexedFilterMap behavior': [{
-    value: utils.indexedFilterMap(function(x) x >= 0, function(i, x) x * i, iMap),
-    equals: [0, 10, 6, 0],
-  }, {
-    value: utils.indexedFilterMap(
-      function(x) x >= 0,
-      function(i, x) { index: i + 1, value: x },
-      iMap
-    )[1],
-    equals: { index: 3, value: 5 },
-  }],
+  'test indexedFilterMap behavior': [
+    {
+      value: utils.indexedFilterMap(function(x) x >= 0, function(i, x) x * i, iMap),
+      equals: [0, 10, 6, 0],
+    },
+    {
+      value: utils.indexedFilterMap(
+        function(x) x >= 0,
+        function(i, x) { index: i + 1, value: x },
+        iMap
+      )[1],
+      equals: { index: 3, value: 5 },
+    },
+  ],
 })

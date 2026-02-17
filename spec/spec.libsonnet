@@ -88,17 +88,19 @@ local
       else _spec;
     std.toString(traverse(spec)),
 
+  // Optional: `import spec.libsonnet) { filename: std.thisFile };`
+  // Will inject filename of including file into default error outputs
+  __file__:: if 'filename' in self then { file: $.filename } else {},
 
   // Simple error injector, automatically includes 'expected' and 'context' fields
   // super<VDATA> + withError(string|{LABEL: string}) -> VDATA
-  _filename:: if 'file' in self then { file: $.file } else {},
   withError:: function(message)
     {
       local context = super.context,
       local specDescription = super.specDescription,
       local optional = if 'optional' in self then self.optional else false,
       errors+: [
-        $._filename
+        $.__file__
         {
           path: $.contextPath(context),
           expected: specDescription +

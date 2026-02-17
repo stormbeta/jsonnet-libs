@@ -37,12 +37,15 @@
         error std.toString(case) + ' is not a test case object!'
       else if !('value' in case != 'values' in case) then
         error 'Test case must specify value or values to test against!'
-      else if !('match' in case != 'equals' in case) then
-        error 'Must have "match" or "equals" fields, and optionally an "assertThat" boolean\nYou can use `match: spec.Any` if you just have an assert'
+      else if !('match' in case != 'equals' in case) && !('assertThat' in case) then
+        error 'Must have "match" or "equals" fields, or optionally an "assertThat" boolean\nYou can use `match: spec.Any` if you just have an assert'
       else if 'match' in case then
         [$.spec.CheckRaw($.spec.RawValidate(value, case.match) + assertThat(case)) for value in values]
       else if 'equals' in case then
-        [$.spec.CheckRaw($.spec.RawValidate(value, $.spec.Equals(case.equals)) + assertThat(case)) for value in values];
+        [$.spec.CheckRaw($.spec.RawValidate(value, $.spec.Equals(case.equals)) + assertThat(case)) for value in values]
+      else if 'assertThat' in case then
+        // NOTE: This ignores the values field completely
+        [assertThat(case)];
     local result =
       std.flatMap(
         function(test) check(test),
