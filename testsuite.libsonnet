@@ -6,7 +6,7 @@
 //   [ ]: Make match/equals optional if using assertThat
 
 {
-  spec:: (import 'spec.libsonnet') { mode: 'json' },
+  spec:: (import 'spec/spec.libsonnet') { mode: 'json' },
   filename: std.thisFile,
 
   // NOTE: You cannot use something like std.all to throw error if tests fail

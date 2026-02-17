@@ -98,10 +98,11 @@
   safeGet:: function(collection, path, default={}, handler=function(v) v)
     local pathLength = std.length(path);
     if !std.isArray(path) then
-      self.optional(collection, path, default, handler)
+      self.safeGet(collection, [path], default, handler)
     else if pathLength == 0 then
       default
     else
+      // TODO: Should show warning if head is object and has more than one entry
       local head = path[0];
       local keyName = std.objectFields(head)[0],
             keyValue = head[keyName],
@@ -110,7 +111,7 @@
         if (std.isString(head) && std.isObject(collection) && head in collection)
            || (std.isNumber(head) && std.isArray(collection) && std.length(collection) >= head + 1) then
           [true, collection[head]]
-        else if std.isObject(head) && std.isObject(collection) && std.length(std.objectFields(head)) == 1 && std.length(found) == 1 then
+        else if std.isObject(head) && std.isArray(collection) && std.length(std.objectFields(head)) == 1 && std.length(found) == 1 then
           [true, found[0]]
         else
           [false, default];
