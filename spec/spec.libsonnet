@@ -1,11 +1,9 @@
 #!/usr/bin/env jsonnet
 
+// https://github.com/stormbeta/jsonnet-libs/blob/main/spec/spec.libsonnet
+
 // See README.md for usage
 
-// TODO:
-//   [ ]: Style - use `functionName(...)::` instead of `functionName:: function(...)`
-
-// NOTE: Don't use utils.libsonnet here as we may have it use this library later
 local
   contains = function(collection, ref)
     if std.type(collection) == 'object' then
@@ -23,7 +21,7 @@ local
 
 {
   // ArrayOf(MapOf(string)) => string
-  prettyPrintErrors:: function(errors, indent='')
+  prettyPrintErrors(errors, indent='')::
     std.join('\n\n', [
       local maxLength = function(a, b) std.max(a, std.length(b));
       local maxLabelLen = std.foldl(maxLength, std.objectFields(err), 0) + 1;
@@ -40,7 +38,7 @@ local
   // @context: [{type: field|index, value: ...}]
   //                   @field: string
   //                   @index: number
-  contextPath:: function(context)
+  contextPath(context)::
     if std.length(context) == 0 then
       '.'
     else
@@ -63,15 +61,14 @@ local
   // But we still want meaningful error output on function-based validation
   // so functions have the option of including a 'specDescription' into the vdata
   // result, which we obtain by making a dummy call on the type function
-  specToString:: function(spec)
+  specToString(spec)::
     local traverse = function(_spec)
       local type = std.type(_spec);
       if type == 'function' then
         if std.length(_spec) != 1 then
           error 'validators must have one argument'
         else
-          // NOTE: This is a horrible hack, but might be unavoidable
-          //       We need to be able to inspect spec top-down to report useful errors
+          // A bit messy, but only way to inspect spec top-down to report useful errors
           local inspect = _spec({ context: [] });
           if 'specDescription' in inspect then
             inspect.specDescription
@@ -94,7 +91,7 @@ local
 
   // Simple error injector, automatically includes 'expected' and 'context' fields
   // super<VDATA> + withError(string|{LABEL: string}) -> VDATA
-  withError:: function(message)
+  withError(message)::
     {
       local context = super.context,
       local specDescription = super.specDescription,
@@ -139,7 +136,7 @@ local
     // index:: VDATA -> integer -> VDATA
     // Wrap array element with index as context
     // VDATA(vdata.value[index])
-    index:: function(vdata, index) {
+    index(vdata, index):: {
       value: vdata.value[index],
       errors+: [],
       context: vdata.context + [{ type: 'index', value: index }],
@@ -152,7 +149,7 @@ local
 
     // array:: [VDATA] -> VDATA
     // Assume every element of array has already been wrapped, and wrap array itself as VDATA struct
-    array:: function(vdata_array) {
+    array(vdata_array):: {
       // TODO: handle Optional correctly in arrays
       //       will probably need to convert to mapWithIndex
       value: [item.value for item in vdata_array],
@@ -161,7 +158,7 @@ local
 
     // object:: {KEY: VDATA ...} -> VDATA
     // Assume every value has already been wrapped, and wrap object itself as VDATA struct
-    object:: function(vdata_map) {
+    object(vdata_map):: {
       value+: {
         [field]: vdata_map[field].value
         for field in std.objectFields(vdata_map)
@@ -203,7 +200,7 @@ local
   Null:: self.Is('null'),
 
   // Helper to make it easier to write basic custom conditionals
-  Validator:: function(specDescription, customFunction)
+  Validator(specDescription, customFunction)::
     function(vdata)
       vdata { specDescription: specDescription } +
       (
@@ -228,7 +225,7 @@ local
       ),
 
   // Check that all values in the array match the same spec (similar to Array<T> in java)
-  ArrayOf:: function(_spec)
+  ArrayOf(_spec)::
     local spec = self.assumeType(_spec);
     function(vdata)
       vdata
@@ -250,7 +247,7 @@ local
         ),
 
   // Check that all fields in the data match the same spec (similar to Map<String,T> in java)
-  MapOf:: function(_spec)
+  MapOf(_spec)::
     local spec = self.assumeType(_spec);
     function(vdata)
       vdata
@@ -271,14 +268,14 @@ local
 
   // Validate field value if it exists, otherwise ignore
   // NOTE: Optional is special-cased by necessity
-  Optional:: function(_spec)
+  Optional(_spec)::
     local spec = self.assumeType(_spec);
     function(vdata)
       $.validate(vdata, spec) +
       { optional: true },
 
   // This is already the default behavior for primitives
-  Equals:: function(literal, message='Value mismatch')
+  Equals(literal, message='Value mismatch')::
     function(vdata)
       vdata {
         specDescription: std.toString(literal),
@@ -296,7 +293,7 @@ local
   Literal:: self.Equals,
 
   // Check that value is one of a provided list of literals
-  Enum:: function(literalsArray)
+  Enum(literalsArray)::
     function(vdata)
       vdata {
         specDescription:
@@ -313,7 +310,7 @@ local
           })
         else {},
 
-  validate:: function(vdata, spec, err=null)  // => VDATA
+  validate(vdata, spec, err=null)::  // => VDATA
     local dataType = std.type(vdata.value);
     local specType = std.type(spec);
 
@@ -383,7 +380,7 @@ local
         }),
 
   // Returns raw vdata result, can be extended before checking
-  RawValidate:: function(input, spec)
+  RawValidate(input, spec)::
     $.validate({
       value: input,
       context: [],
@@ -410,9 +407,9 @@ local
 
   // Reconstructs and returns input data in-line
   // Intended for inline validation for functions and templates
-  TypeCheck:: function(spec, data, mode=self.mode)
+  TypeCheck(spec, data, mode=self.mode)::
     self.CheckRaw(self.RawValidate(data, spec), mode),
 
-  Validate:: function(data, spec, mode=self.mode)
+  Validate(data, spec, mode=self.mode)::
     self.TypeCheck(spec, data, mode),
 }

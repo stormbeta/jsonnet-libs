@@ -1,10 +1,10 @@
-#!/usr/bin/jsonnet -J jsonnetunit/jsonnetunit
+#!/usr/bin/jsonnet
 
-local utils = (import '../utils/utils.libsonnet');
+local utils = (import '../utils.libsonnet');
 local spec = (import 'spec_extended.libsonnet') { mode: 'json' };
 local v = spec;
 
-local TestSuite = (import 'testsuite.libsonnet') { filename: std.thisFile };
+local TestSuite = (import '../testsuite.libsonnet') { filename: std.thisFile };
 
 TestSuite.RunTests({
   local log = utils.log,
