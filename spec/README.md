@@ -20,9 +20,9 @@ better tools and libraries for that.
 local t = (import 'spec.libsonnet') { file: std.thisFile };
 
 local spec = {
-  hello: 'string',
+  hello: t.String,
   entries: t.ArrayOf({
-    name: 'string',
+    name: t.String,
     value: t.Optional('number'),
   }),
   strList: t.ArrayOf('string'),
@@ -92,7 +92,7 @@ local data = {
 t.TypeCheck(
   {
     number_names: t.ArrayOf({
-      name: 'string',
+      name: t.String,
       value: IntRange(3, 9),
     }),
   },
@@ -119,11 +119,22 @@ PATH:     .number_names[1].value
 
 ### spec Reference
 
-Primitive names are matched using jsonnet's std.type
+**Primitives**
 
-E.g. 'string', 'object', 'number', 'array', 'boolean', etc.
+Primitives in the spec are matched literally by default, i.e. must match input exactly
 
-Objects or arrays in the spec are used to recurse down and validate nested values
+To check the type of the input rather than its value:
+
+* Call `Is(...)` with the type name, e.g. 'string', 'object', 'number', 'array', 'boolean', etc.
+
+* Call the capitalized aliases, e.g `String`, `Object`, etc.
+
+* Things like `ArrayOf` will assume strings are references to type names and not the literal string.
+
+**Objects or arrays**
+
+In the spec, are used to recurse down and validate nested values. By default, only fields present in
+the spec will be checked and all others ignored.
 
 For everything else, see type functions below:
 
@@ -152,13 +163,6 @@ MapOf(SPEC)
   Will check that all fields in the object have values of the same provided type
   There's no spec for the keys since keys are always strings in JSON
 
-Either([SPECS...])
-
-  Will check that data matches at least one of the provided specs
-
-All([SPECS...])
-
-  Checks that all specs match - mostly intended for use with CustomValidators
 
 Validator(NAME, function(DATA) => RESULT_OBJECT)
 
@@ -262,10 +266,16 @@ CONTEXT:
 //       I'd rather see this library remain pretty basic as something I can actually use and maintain
 
 
----
+**Extended Functions**
 
-# Thoughts
+These are functions that may be helpful, but add complexity to the output / reporting
 
-Consider renaming to something like constraints.libsonnet?
+Import `spec_extended.libsonnet` instead to enable these:
 
-Also consider reworking into something more meant for unit testing
+Either([SPECS...])
+
+  Will check that data matches at least one of the provided specs
+
+All([SPECS...])
+
+  Checks that all specs match - mostly intended for use with CustomValidators
