@@ -76,6 +76,10 @@
     then handler(object[field])
     else default,
 
+  // All except the first item of an array, equivalent to python's array[1:-1]
+  tail:: function(array)
+    std.slice(array, 1, std.length(array), 1),
+
   // Safe deep field/array indexing using a list of keys
   // collection: array | object
   // path: [string|number|object] | string

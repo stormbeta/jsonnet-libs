@@ -1,84 +1,82 @@
 #!/usr/bin/jsonnet -J jsonnetunit/jsonnetunit
 
-local utils = (import '../utils/utils.libsonnet') {
-  log+: {
-    level:: self.TRACE,
-  },
-};
-local v = (import 'schema.libsonnet') {
-  JsonValidate:: function(data, schema) self.TypeCheck(schema, data, 'json'),
-};
-//local test = import 'jsonnetunit/test.libsonnet';
-local test = import 'test.libsonnet';
+local utils = (import '../utils/utils.libsonnet');
+local spec = (import 'spec.libsonnet') { mode: 'json' };
+local v = spec;
 
+local TestSuite = (import 'testsuite.libsonnet') { filename: std.thisFile };
 
-test.suite({
+TestSuite.RunTests({
   local log = utils.log,
   local all = function(boolArray)
     std.foldl(function(a, b) a && b, boolArray, true),
 
-  'test basic primitives': {
-    local data = [
-      'a-string',
-      0,
-      [],
-      {},
-      true,
-      null,
-    ],
-    local schema = [
-      'string',
-      'number',
-      'array',
-      'object',
-      'boolean',
-      'null',
-    ],
-    expect: data,
-    actual: v.JsonValidate(data, schema),
-  },
+  local types = [
+    ['a-string', 'string'],
+    [0, 'number'],
+    [[], 'array'],
+    [{}, 'object'],
+    [true, 'boolean'],
+    [null, 'null'],
+  ],
+  'test basic primitives': [
+    {
+      value: t[0],
+      equals: spec.Validate(t[0], spec.Is(t[1])),
+    }
+    for t in types
+  ],
+
+  // Old behavior was that strings were treated as type names by default
+  // Now we want all strings to be literals by default, and types should be explicit
+  // At least when placed directly in the spec
+  "test strings matching primitive type names aren't special": [
+    {
+      value: t[0],
+      match: v.Any,
+      assertThat: v.RawValidate(t[0], t[1]).failed,
+    }
+    for t in types
+  ],
 
   'test missing field': {
-    local data = {},
-    actual: v.JsonValidate(data, { hello: 'string' }),
-    expectThat: {
-      err:: self.actual.errors[0],
-      result: self.err['error'] == 'required field does not exist!'
-              && self.err.path == '.hello',
+    value: utils.safeGet(
+      spec.Validate({}, { hello: 'string' }),
+      ['errors', 0]
+    ),
+    match: {
+      'error': 'Required field does not exist: .hello',
+      path: '.hello',
     },
   },
 
-  'test generic array template': {
-    local data = {
-      myArray: ['hello', 'world'],
-    },
-    actual: [
-      v.JsonValidate(data, { myArray: v.Array('string') }),
-      v.JsonValidate(data, { myArray: v.Array('number') }),
-    ],
-    expectThat: {
-      result: all([
-        self.actual[0] == data,
-        self.actual[1].errors[0].path == '.myArray[0]',
-      ]),
-    },
+  local data = {
+    myArray: ['hello', 'world'],
   },
+  'test generic array template': [
+    {
+      value: spec.Validate(data, { myArray: v.Array('string') }),
+      equals: data,
+    },
+    {
+      value: spec.Validate(data, { myArray: v.Array('number') }).errors[0],
+      match: { path: '.myArray[0]' },
+    },
+  ],
 
   'test generic object template': {
     local data = {
       blue: 'one',
       red: 'two',
     },
-    actual: [
-      v.JsonValidate(data, v.MapOf('string')),
-      v.JsonValidate(data, v.MapOf('array')),
+    value: [
+      spec.Validate(data, v.MapOf('string')),
+      spec.Validate(data, v.MapOf('array')).errors[0],
     ],
-    expectThat: {
-      result: all([
-        self.actual[0] == data,
-        self.actual[1].errors[0].path == '.blue',
-      ]),
-    },
+    match: [
+      data,
+      { path: '.blue' },
+    ],
   },
 
   'test correct path string for nested generic object error': {
@@ -88,26 +86,23 @@ test.suite({
         { good: 'world', bad: 5 },
       ],
     },
-    actual: v.JsonValidate(data, {
+    value: spec.Validate(data, {
       hello: v.Array(v.MapOf('string')),
-    }),
-    expectThat: {
-      local err = self.actual.errors[0],
-      result: all([
-        err.path == '.hello[1].bad',
-        err.expected == 'string',
-        err.actual == 'number',
-      ]),
+    }).errors[0],
+    match: {
+      path: '.hello[1].bad',
+      expected: 'string',
+      found: 'number',
     },
   },
 
   'test safe stringification of functions in schema': {
     local data = { hello: 'world' },
-    actual: v.JsonValidate(data, v.MapOf(
+    value: spec.Validate(data, v.MapOf(
       v.Either(['number', v.MapOf(v.Either(['number', 'string']))])
-    )),
-    expectThat: {
-      result: self.actual.errors[0].expected == 'number OR map{number OR string}',
+    )).errors[0],
+    match: {
+      expected: 'number | map{number | string}',
     },
   },
 
@@ -115,31 +110,30 @@ test.suite({
     local data = {
       hello: 'no',
     },
-    actual: v.JsonValidate(data, {
+    value: spec.Validate(data, {
       hello: v.Optional(v.Array('string')),
-    }),
-    expectThat: {
-      result: self.actual.errors[0].expected == 'array[string]?',
+    }).errors[0],
+    match: {
+      expected: 'array[string]?',
     },
   },
 
   'test mismatched array length': {
     local data = [0, 1, 2],
-    actual: v.JsonValidate(data, ['number', 'number']),
-    expectThat: {
-      local err = self.actual.errors[0],
-      result: all([err.actual == 3, err.expected == 2]),
+    value: spec.Validate(data, [v.Number, v.Number]).errors[0],
+    match: {
+      actual_length: 3,
+      expect_length: 2,
     },
   },
 
   'test StrictMap errors on unknown fields': {
-    actual: v.JsonValidate({
-      expected: 'field',
-      unknown: 'field',
-    }, v.StrictMap({ expected: 'string' })),
-    expectThat: {
-      result: std.length(self.actual.errors) > 0 && self.actual.errors[0].fields[0] == 'unknown',
+    value: spec.Validate({ expected: 'field', unknown: 'field' },
+                         v.StrictMap({ expected: v.String })).errors[0],
+    match: {
+      fields: ['unknown'],
     },
+    assertThat: std.startsWith(self.value.err, 'Unknown fields'),
   },
 
   'test optional field': {
@@ -151,35 +145,34 @@ test.suite({
       // Value doesn't exist
       { static: 'static' },
     ],
-    actual: [
+    value: [
       v.RawValidate(data, { option: v.Optional('boolean') })
       for data in datas
     ],
-    expectThat: {
-      result: all([
-        std.length(self.actual[0].errors) == 0 && std.objectHas(self.actual[0].value, 'option'),
-        std.length(self.actual[1].errors) > 0,
-        std.length(self.actual[2].errors) == 0 && !std.objectHas(self.actual[2].value, 'option'),
-      ]),
-    },
+    match: v.Any,
+    assertThat: all([
+      std.length(self.value[0].errors) == 0 && std.objectHas(self.value[0].value, 'option'),
+      std.length(self.value[1].errors) > 0,
+      std.length(self.value[2].errors) == 0 && !std.objectHas(self.value[2].value, 'option'),
+    ]),
   },
 
-  local schema_entriesToObject = function(key) v.ArrayOf({ [key]: 'string' }),
+  local schema_entriesToObject = function(key) v.ArrayOf({ [key]: v.String }),
   'test schema_entriesToObject': {
     local data = [
       [{ name: 'hello' }, { key: 'bye' }],
       [{ name: 'hello' }, { name: 'bye' }],
     ],
-    actual: [
+    value: [
       v.TypeCheck(schema_entriesToObject('name'), entries, mode='json')
       for entries in data
     ],
-    expectThat: {
-      result: all([
-        self.actual[0].errors[0].path == '[1].name',
-        !std.member(self.actual[1], 'errors'),
-      ]),
-    },
+    match: v.Any,
+    assertThat: all([
+      self.value[0].errors[0].path == '[1].name',
+      !std.member(self.value[1], 'errors'),
+    ]),
   },
+
 
 })

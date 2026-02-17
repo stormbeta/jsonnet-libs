@@ -180,6 +180,30 @@ local
     },
   },
 
+  // Assume strings are primitive type names when passed to other validator functions
+  assumeType(spec):: if std.type(spec) == 'string' then self.Is(spec) else spec,
+
+  // Primitive type checks
+  Is(type):: function(vdata)
+    vdata { specDescription: '%s' % type } +
+    if !('value' in vdata) then
+      $.withMissingError
+    else
+      local vtype = std.type(vdata.value);
+      if vtype != type && type != 'any' then
+        $.withError({
+          'error': 'Type mismatch',
+          //expected: self.expected_type,
+          expected: type,
+          found: vtype,
+        })
+      else
+        {},
+  Any:: self.Is('any'),
+  String:: self.Is('string'),
+  Number:: self.Is('number'),
+  Boolean:: self.Is('boolean'),
+
   // Helper to make it easier to write basic custom conditionals
   Validator:: function(specDescription, customFunction)
     function(vdata)
@@ -199,7 +223,7 @@ local
             if result.result then
               vdata
             else
-              $.withError(result { actual: vdata.value, result:: null })
+              $.withError(result { actual_value: vdata.value, result:: null })
           else
             // Treat result as string-like error message or value
             $.withError(std.toString(result))
@@ -208,7 +232,8 @@ local
   // Check that all values in the array match the same spec (similar to Array<T> in java)
   // TODO: We should make this the default when encountering `[...]` syntax in spec
   //       It's rare that anyone would want an array with an exact length and diferrent types for each positional element
-  ArrayOf:: function(spec)
+  ArrayOf:: function(_spec)
+    local spec = self.assumeType(_spec);
     function(vdata)
       vdata
       { specDescription: 'array[%s]' % $.specToString(spec) } +
@@ -216,7 +241,7 @@ local
         $.withMissingError
       else if std.type(vdata.value) != 'array' then
         $.withError({
-          actual: std.type(vdata.value),
+          actual_type: std.type(vdata.value),
           value: vdata.value,
         })
       else
@@ -231,7 +256,8 @@ local
   Array:: self.ArrayOf,
 
   // Check that all fields in the data match the same spec (similar to Map<String,T> in java)
-  MapOf:: function(spec)
+  MapOf:: function(_spec)
+    local spec = self.assumeType(_spec);
     function(vdata)
       vdata
       { specDescription: 'map{%s}' % $.specToString(spec) } +
@@ -240,7 +266,7 @@ local
       else
         if std.type(vdata.value) != 'object' then
           $.withError({
-            actual: std.type(vdata.value),
+            actual_type: std.type(vdata.value),
             value: vdata.value,
           })
         else
@@ -253,7 +279,8 @@ local
 
   // Validate field value if it exists, otherwise ignore
   // NOTE: Optional is special-cased by necessity
-  Optional:: function(spec)
+  Optional:: function(_spec)
+    local spec = self.assumeType(_spec);
     function(vdata)
       $.validate(vdata, spec) +
       { optional: true },
@@ -262,7 +289,9 @@ local
   // TODO: Improve error output, especially if used for larger structural differences
   //       Might consider rending specs as actual formatted json
   // Check data against all provided specs, and return the result of the first one that matches (or error if none)
-  Either:: function(specs)
+  //Advanced - move to seperate file
+  Either:: function(_specs)
+    local specs = [self.assumeType(s) for s in _specs];
     function(vdata)
       local results = std.map(
         function(spec) $.validate(vdata, spec), specs
@@ -290,6 +319,7 @@ local
 
   // Check all specs and return error from the first failed match
   // Limited utility - prefer specifying all requirements in custom validators directly rather than trying to combine them
+  //Advanced - move to seperate file
   All:: function(specs)
     // return first element matching condition, without eval'ing whole list
     local lazyFind(list, condition) =
@@ -338,6 +368,7 @@ local
         else {},
   Equals:: self.Literal,
 
+  //Advanced - move to seperate file
   AllowedFields:: function(fields)
     function(vdata)
       vdata { specDescription: 'AllowedFields(%s)' % std.join(',', fields) } +
@@ -363,6 +394,7 @@ local
           else
             {},
 
+  //Advanced - move to seperate file
   HasNamedEntry:: function(match, key='name')
     local name = match[key];
     function(vdata)
@@ -409,7 +441,8 @@ local
 
   // Validate spec as normal, but cause error if any unknown data/fields present
   // NOTE: this also implicitly freezes the spec for the object
-  StrictMap:: function(spec)
+  StrictMap:: function(_spec)
+    local spec = self.assumeType(_spec);
     function(vdata)
       // Pass through to normal validation first, then check for extra fields
       $.validate(vdata, spec) +
@@ -454,9 +487,6 @@ local
     else if !('value' in vdata) then
       $.withMissingError
 
-    else if spec == 'any' then
-      {}
-
     // Recurse into object spec
     else if specType == 'object' && dataType == 'object' then
       $.bind.object({
@@ -465,7 +495,7 @@ local
           if field in spec then
             spec[field]
           else
-            'any'
+            $.Any
         )
         for field in std.set(std.objectFields(spec) + std.objectFields(vdata.value))
       })
@@ -478,8 +508,8 @@ local
       if std.length(spec) != std.length(vdata.value) then
         $.withError({
           'error': 'Array length does not match spec',
-          expected: std.length(spec),
-          actual: std.length(vdata.value),
+          expect_length: std.length(spec),
+          actual_length: std.length(vdata.value),
         })
       else
         $.bind.array(
@@ -490,37 +520,50 @@ local
           )
         )
 
+    // Assume literal value check
     else
-      if dataType == spec then
+      if vdata.value == spec then
         {}
       else
         $.withError({
           path: $.contextPath(vdata.context),
-          found: dataType,
+          found_type: dataType,
           actual: (if dataType == 'string'
                    then '"' + vdata.value + '"'
-                   else std.toString(vdata.value)),
+                   else vdata.value),
         }),
 
+  // Returns raw vdata result, can be extended before checking
   RawValidate:: function(input, spec)
-    $.validate({ errors+: [], value: input, context: [] }, spec),
+    $.validate({
+      value: input,
+      context: [],
+      errors+: [],
+      failed:: std.length(self.errors) > 0,
+    }, spec),
 
-  // Reconstructs and returns input data in-line
-  // Intended for inline validation for functions and templates
   // One of: error, warn, json
+  // TODO: Get rid of "json" mode in favor of things just using RawValidate
   mode: 'error',
-  TypeCheck:: function(spec, data, mode=self.mode)
-    local result_vdata = self.RawValidate(data, spec);
-    if std.length(result_vdata.errors) > 0 then
-      local err = '\n' + $.prettyPrintErrors(result_vdata.errors);
+  // Processes results, returning original value if spec passes, otherwise pretty prints errors
+  // if mode==json, returns just the errors object
+  CheckRaw(result, mode=self.mode)::
+    if std.length(result.errors) > 0 then
+      local err = '\n' + $.prettyPrintErrors(result.errors);
       if mode == 'warn' then
-        std.trace(err, result_vdata.value)
+        std.trace(err, result.value)
       else if mode == 'json' then
-        { errors+: result_vdata.errors }
+        { errors+: result.errors }
       else
         error err
     else
-      result_vdata.value,
+      result.value,
+
+  // Reconstructs and returns input data in-line
+  // Intended for inline validation for functions and templates
+  TypeCheck:: function(spec, data, mode=self.mode)
+    self.CheckRaw(self.RawValidate(data, spec), mode),
+
   Validate:: function(data, spec, mode=self.mode)
     self.TypeCheck(spec, data, mode),
 }
