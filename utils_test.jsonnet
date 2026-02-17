@@ -138,4 +138,21 @@ test.RunTests({
       equals: { index: 3, value: 5 },
     },
   ],
+
+  'test string case conversion': [
+    {
+      values: [
+        utils.capitalize(s)
+        for s in ['foobar', 'FOOBAR', 'Foobar', 'FoOBar']
+      ],
+      equals: 'Foobar',
+    },
+    {
+      values: [
+        utils.snakeToTitle(s)
+        for s in ['foo_bar', 'FOO_BAR', 'foo_BAR', 'Foo_Bar', 'Foo_bar']
+      ],
+      equals: 'Foo Bar',
+    },
+  ],
 })

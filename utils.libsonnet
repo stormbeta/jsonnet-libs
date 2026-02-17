@@ -1,9 +1,7 @@
 #!/usr/bin/env jsonnet
 
-// TODO: Add tests for newly added functions
-
 {
-  version:: '2.2',
+  version:: '2.3',
   log:: {
     // Everything in jsonnet is an expression with a meaningful return value
     // So logging should wrap some kind of actual value and return it in-place
@@ -196,4 +194,14 @@
   indexOf:: function(conditional, array)
     local results = std.find(true, std.map(conditional, array));
     if std.length(results) == 0 then -1 else results[0],
+
+  // Convert any string to only the first letter being capitalized
+  capitalize:: function(word)
+    if std.length(word) == 0 then word
+    else std.asciiUpper(std.substr(word, 0, 1)) +
+         std.asciiLower(std.substr(word, 1, std.length(word) - 1)),
+
+  // snake_case => Title Case
+  snakeToTitle(str)::
+    std.join(' ', std.map(self.capitalize, std.split(str, '_'))),
 }
