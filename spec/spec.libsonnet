@@ -62,32 +62,32 @@ local
 
   // Functions cannot be inspected or converted to strings
   // But we still want meaningful error output on function-based validation
-  // so functions have the option of including a 'schemaDescription' into the vdata
+  // so functions have the option of including a 'specDescription' into the vdata
   // result, which we obtain by making a dummy call on the type function
-  schemaToString:: function(schema)
-    local traverse = function(_schema)
-      local type = std.type(_schema);
+  specToString:: function(spec)
+    local traverse = function(_spec)
+      local type = std.type(_spec);
       if type == 'function' then
-        if std.length(_schema) != 1 then
+        if std.length(_spec) != 1 then
           error 'validators must have one argument'
         else
           // NOTE: This is a horrible hack, but might be unavoidable
-          //       We need to be able to inspect schema top-down to report useful errors
-          local inspect = _schema({ context: [] });
-          if 'schemaDescription' in inspect then
-            inspect.schemaDescription
+          //       We need to be able to inspect spec top-down to report useful errors
+          local inspect = _spec({ context: [] });
+          if 'specDescription' in inspect then
+            inspect.specDescription
           else
             '<function>'
       else if type == 'object' then {
-        [field]: traverse(_schema[field])
-        for field in std.objectFields(_schema)
+        [field]: traverse(_spec[field])
+        for field in std.objectFields(_spec)
       }
       else if type == 'array' then [
         traverse(item)
-        for item in _schema
+        for item in _spec
       ]
-      else _schema;
-    std.toString(traverse(schema)),
+      else _spec;
+    std.toString(traverse(spec)),
 
 
   // Simple error injector, automatically includes 'expected' and 'context' fields
@@ -96,13 +96,13 @@ local
   withError:: function(message)
     {
       local context = super.context,
-      local schemaDescription = super.schemaDescription,
+      local specDescription = super.specDescription,
       local optional = if 'optional' in self then self.optional else false,
       errors+: [
         $._filename
         {
           path: $.contextPath(context),
-          expected: schemaDescription +
+          expected: specDescription +
                     if optional then '?' else '',
         } +
         if std.type(message) == 'string' then
@@ -120,15 +120,15 @@ local
     errors+: [{
       path: $.contextPath(ctx.context),
       'error': 'Required field does not exist: ' + self.path,
-      expected: ctx.schemaDescription,
+      expected: ctx.specDescription,
     }],
   },
 
   // Functions to wrap data in vdata structure
   bind:: {
-    // schema:: schema -> VDATA -> VDATA
-    schema:: function(schema, vdata)
-      vdata + $.validate(vdata, schema),
+    // spec:: spec -> VDATA -> VDATA
+    spec:: function(spec, vdata)
+      vdata + $.validate(vdata, spec),
 
     // fieldName:: VDATA -> string -> VDATA
     fieldName:: function(vdata, field)
@@ -154,7 +154,7 @@ local
 
     // For arrays and objects, we only need to keep value and error fields
     // * 'optional' is used in object bind to strip missing values
-    // * 'schemaDescription' is only used for error reporting, and at this point every
+    // * 'specDescription' is only used for error reporting, and at this point every
     //    value has already been validated and any errors collected
 
     // array:: [VDATA] -> VDATA
@@ -181,9 +181,9 @@ local
   },
 
   // Helper to make it easier to write basic custom conditionals
-  Validator:: function(schemaDescription, customFunction)
+  Validator:: function(specDescription, customFunction)
     function(vdata)
-      vdata { schemaDescription: schemaDescription } +
+      vdata { specDescription: specDescription } +
       (
         if !('value' in vdata) then
           $.withMissingError
@@ -205,13 +205,13 @@ local
             $.withError(std.toString(result))
       ),
 
-  // Check that all values in the array match the same schema (similar to Array<T> in java)
-  // TODO: We should make this the default when encountering `[...]` syntax in schema
+  // Check that all values in the array match the same spec (similar to Array<T> in java)
+  // TODO: We should make this the default when encountering `[...]` syntax in spec
   //       It's rare that anyone would want an array with an exact length and diferrent types for each positional element
-  ArrayOf:: function(schema)
+  ArrayOf:: function(spec)
     function(vdata)
       vdata
-      { schemaDescription: 'array[%s]' % $.schemaToString(schema) } +
+      { specDescription: 'array[%s]' % $.specToString(spec) } +
       if !('value' in vdata) then
         $.withMissingError
       else if std.type(vdata.value) != 'array' then
@@ -223,18 +223,18 @@ local
         $.bind.array(
           std.mapWithIndex(
             function(index, _)
-              $.validate($.bind.index(vdata, index), schema),
+              $.validate($.bind.index(vdata, index), spec),
             vdata.value
           )
         ),
   // Compatibility
   Array:: self.ArrayOf,
 
-  // Check that all fields in the data match the same schema (similar to Map<String,T> in java)
-  MapOf:: function(schema)
+  // Check that all fields in the data match the same spec (similar to Map<String,T> in java)
+  MapOf:: function(spec)
     function(vdata)
       vdata
-      { schemaDescription: 'map{%s}' % $.schemaToString(schema) } +
+      { specDescription: 'map{%s}' % $.specToString(spec) } +
       if !('value' in vdata) then
         $.withMissingError
       else
@@ -245,7 +245,7 @@ local
           })
         else
           $.bind.object({
-            [field]: $.validate($.bind.fieldValue(vdata, field), schema)
+            [field]: $.validate($.bind.fieldValue(vdata, field), spec)
             for field in std.objectFields(vdata.value)
           })
   ,
@@ -253,26 +253,26 @@ local
 
   // Validate field value if it exists, otherwise ignore
   // NOTE: Optional is special-cased by necessity
-  Optional:: function(schema)
+  Optional:: function(spec)
     function(vdata)
-      $.validate(vdata, schema) +
+      $.validate(vdata, spec) +
       { optional: true },
 
 
   // TODO: Improve error output, especially if used for larger structural differences
-  //       Might consider rending schemas as actual formatted json
-  // Check data against all provided schemas, and return the result of the first one that matches (or error if none)
-  Either:: function(schemas)
+  //       Might consider rending specs as actual formatted json
+  // Check data against all provided specs, and return the result of the first one that matches (or error if none)
+  Either:: function(specs)
     function(vdata)
       local results = std.map(
-        function(schema) $.validate(vdata, schema), schemas
+        function(spec) $.validate(vdata, spec), specs
       );
       local valid = std.filter(
         function(_vdata) std.length(_vdata.errors) == 0, results
       );
       vdata {
-        schemaDescription:
-          std.join(' | ', ([$.schemaToString(s) for s in schemas])),
+        specDescription:
+          std.join(' | ', ([$.specToString(s) for s in specs])),
       } +
       if !('value' in vdata) then
         $.withMissingError
@@ -288,9 +288,9 @@ local
       else
         valid[0],
 
-  // Check all schemas and return error from the first failed match
+  // Check all specs and return error from the first failed match
   // Limited utility - prefer specifying all requirements in custom validators directly rather than trying to combine them
-  All:: function(schemas)
+  All:: function(specs)
     // return first element matching condition, without eval'ing whole list
     local lazyFind(list, condition) =
       if list == [] then null
@@ -298,21 +298,21 @@ local
       else lazyFind(list[1:], condition);
     function(vdata)
       local results = std.map(
-        function(schema) $.validate(vdata, schema), schemas
+        function(spec) $.validate(vdata, spec), specs
       );
       local valid = std.all([
         std.length(_vdata.errors) == 0
         for _vdata in results
       ]);
       vdata {
-        schemaDescription:
-          std.join(' AND ', ([$.schemaToString(s) for s in schemas])),
+        specDescription:
+          std.join(' AND ', ([$.specToString(s) for s in specs])),
       } +
       if !('value' in vdata) then
         $.withMissingError
-      else if std.type(schemas) != 'array' then
+      else if std.type(specs) != 'array' then
         $.withError({
-          'error': 'All([SCHEMAS...]) expects list, got %s' % std.type(schemas),
+          'error': 'All([specS...]) expects list, got %s' % std.type(specs),
         })
       else if !valid then
         // Some custom functions may fail if using All(...) to
@@ -325,7 +325,7 @@ local
   Literal:: function(literal, message='Value mismatch')
     function(vdata)
       vdata {
-        schemaDescription: std.toString(literal),
+        specDescription: std.toString(literal),
       }
       + if !('value' in vdata) then
         $.withMissingError
@@ -340,7 +340,7 @@ local
 
   AllowedFields:: function(fields)
     function(vdata)
-      vdata { schemaDescription: 'AllowedFields(%s)' % std.join(',', fields) } +
+      vdata { specDescription: 'AllowedFields(%s)' % std.join(',', fields) } +
       if !('value' in vdata) then
         $.withMissingError
       else
@@ -366,7 +366,7 @@ local
   HasNamedEntry:: function(match, key='name')
     local name = match[key];
     function(vdata)
-      vdata { schemaDescription: 'HasNamedEntry()' } +
+      vdata { specDescription: 'HasNamedEntry()' } +
       if !('value' in vdata) then $.withMissingError
       else if std.type(vdata.value) != 'array' then
         $.withError('Cannot check entries of non-array type')
@@ -393,7 +393,7 @@ local
   Enum:: function(literalsArray)
     function(vdata)
       vdata {
-        schemaDescription:
+        specDescription:
           '{%s}' % std.join(', ', literalsArray),
       }
       +
@@ -407,21 +407,21 @@ local
           })
         else {},
 
-  // Validate schema as normal, but cause error if any unknown data/fields present
-  // NOTE: this also implicitly freezes the schema for the object
-  StrictMap:: function(schema)
+  // Validate spec as normal, but cause error if any unknown data/fields present
+  // NOTE: this also implicitly freezes the spec for the object
+  StrictMap:: function(spec)
     function(vdata)
       // Pass through to normal validation first, then check for extra fields
-      $.validate(vdata, schema) +
-      { schemaDescription: 'StrictMap' } +
-      if std.type(schema) != 'object' || std.type(vdata.value) != 'object' then
+      $.validate(vdata, spec) +
+      { specDescription: 'StrictMap' } +
+      if std.type(spec) != 'object' || std.type(vdata.value) != 'object' then
         $.withError({
-          'error': 'StrictMap requires object schema, got %s instead' % std.type(schema),
+          'error': 'StrictMap requires object spec, got %s instead' % std.type(spec),
         })
       else
         local diff = std.setDiff(
           std.objectFields(vdata.value),
-          std.objectFields(schema)
+          std.objectFields(spec)
         );
         if std.length(diff) != 0 then
           $.withError({
@@ -431,13 +431,13 @@ local
         else
           {},
 
-  validate:: function(vdata, schema, err=null)  // => VDATA
+  validate:: function(vdata, spec, err=null)  // => VDATA
     local dataType = std.type(vdata.value);
-    local schemaType = std.type(schema);
+    local specType = std.type(spec);
 
     vdata
-    // Generate and inject schema description field for human-friendly errors
-    { schemaDescription: $.schemaToString(schema) }
+    // Generate and inject spec description field for human-friendly errors
+    { specDescription: $.specToString(spec) }
     +
     // Passthrough existing error array so it can be extended instead of overwritten in return
     { errors+: if err != null then [err] else [] }
@@ -447,51 +447,51 @@ local
     // get the opportunity to handle missing values before it becomes an error
     // Caveat is this means all type functions *MUST* handle the possibility
     // of a missing value themselves!
-    if schemaType == 'function' then
-      schema(vdata)
+    if specType == 'function' then
+      spec(vdata)
 
     // Check if field is missing
     else if !('value' in vdata) then
       $.withMissingError
 
-    else if schema == 'any' then
+    else if spec == 'any' then
       {}
 
-    // Recurse into object schema
-    else if schemaType == 'object' && dataType == 'object' then
+    // Recurse into object spec
+    else if specType == 'object' && dataType == 'object' then
       $.bind.object({
         [field]: $.validate(
           $.bind.fieldValue(vdata, field),
-          if field in schema then
-            schema[field]
+          if field in spec then
+            spec[field]
           else
             'any'
         )
-        for field in std.set(std.objectFields(schema) + std.objectFields(vdata.value))
+        for field in std.set(std.objectFields(spec) + std.objectFields(vdata.value))
       })
 
-    // Recurse into fixed array schema - this will likely be a rare case
+    // Recurse into fixed array spec - this will likely be a rare case
     // as most arrays are not fixed length/positional
     // TODO: Consider making this an alias for ArrayOf(...) instead
     //       and make this the special case?
-    else if schemaType == 'array' && dataType == 'array' then
-      if std.length(schema) != std.length(vdata.value) then
+    else if specType == 'array' && dataType == 'array' then
+      if std.length(spec) != std.length(vdata.value) then
         $.withError({
-          'error': 'Array length does not match schema',
-          expected: std.length(schema),
+          'error': 'Array length does not match spec',
+          expected: std.length(spec),
           actual: std.length(vdata.value),
         })
       else
         $.bind.array(
           std.mapWithIndex(
             function(index, _)
-              $.validate($.bind.index(vdata, index), schema[index])
-            , schema
+              $.validate($.bind.index(vdata, index), spec[index])
+            , spec
           )
         )
 
     else
-      if dataType == schema then
+      if dataType == spec then
         {}
       else
         $.withError({
@@ -502,15 +502,15 @@ local
                    else std.toString(vdata.value)),
         }),
 
-  RawValidate:: function(input, schema)
-    $.validate({ errors+: [], value: input, context: [] }, schema),
+  RawValidate:: function(input, spec)
+    $.validate({ errors+: [], value: input, context: [] }, spec),
 
   // Reconstructs and returns input data in-line
   // Intended for inline validation for functions and templates
   // One of: error, warn, json
   mode: 'error',
-  TypeCheck:: function(schema, data, mode=self.mode)
-    local result_vdata = self.RawValidate(data, schema);
+  TypeCheck:: function(spec, data, mode=self.mode)
+    local result_vdata = self.RawValidate(data, spec);
     if std.length(result_vdata.errors) > 0 then
       local err = '\n' + $.prettyPrintErrors(result_vdata.errors);
       if mode == 'warn' then
@@ -521,6 +521,6 @@ local
         error err
     else
       result_vdata.value,
-  Validate:: function(data, schema, mode=self.mode)
-    self.TypeCheck(schema, data, mode),
+  Validate:: function(data, spec, mode=self.mode)
+    self.TypeCheck(spec, data, mode),
 }

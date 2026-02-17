@@ -1,4 +1,4 @@
-# schema.libsonnet
+# spec.libsonnet
 
 Pure jsonnet library for adding type checking to calls
 
@@ -11,15 +11,15 @@ structure between different contexts.
 This library aims to add inline type and constraint checks that can produce human-readable errors
 instead of a cryptic stack trace.
 
-NOTE: This is not intended as a JSON schema validator - you could use it that way, but there are many
+NOTE: This is not intended as a JSON spec validator - you could use it that way, but there are many
 better tools and libraries for that.
 
 **Example**
 
 ```jsonnet
-local t = (import 'schema.libsonnet') { file: std.thisFile };
+local t = (import 'spec.libsonnet') { file: std.thisFile };
 
-local schema = {
+local spec = {
   hello: 'string',
   entries: t.ArrayOf({
     name: 'string',
@@ -40,7 +40,7 @@ local data = {
   strList: ['one', 'two', 'three'],
 };
 
-t.TypeCheck(schema, data),
+t.TypeCheck(spec, data),
 ```
 
 This will pass, returning data in-place. But if we accidentally made the first value in
@@ -54,7 +54,7 @@ FILE:     example.jsonnet
 PATH:     .entries[0].value
 VALUE:    "1"
 
-        schema.libsonnet:433:9-18       function <anonymous>
+        spec.libsonnet:433:9-18       function <anonymous>
         example.jsonnet:24:1-26
 ```
 
@@ -68,7 +68,7 @@ VALUE:    "1"
 **Custom Validator Example**
 
 ```jsonnet
-local t = (import 'schema.libsonnet') { file: std.thisFile };
+local t = (import 'spec.libsonnet') { file: std.thisFile };
 
 local IntRange = function(min, max)
   t.CustomValidator(
@@ -117,13 +117,13 @@ PATH:     .number_names[1].value
 ```
 
 
-### Schema Reference
+### spec Reference
 
 Primitive names are matched using jsonnet's std.type
 
 E.g. 'string', 'object', 'number', 'array', 'boolean', etc.
 
-Objects or arrays in the schema are used to recurse down and validate nested values
+Objects or arrays in the spec are used to recurse down and validate nested values
 
 For everything else, see type functions below:
 
@@ -136,29 +136,29 @@ Enum([VALUES...])
 
   Data must equal one of the provided literals
 
-Optional(SCHEMA)
+Optional(SPEC)
 
-  Will match data against provided schema if it exists
+  Will match data against provided spec if it exists
   If it doesn't exist, it will be ignored
   If used on a missing field value, the field will not be in the output
 
-ArrayOf(SCHEMA)
+ArrayOf(SPEC)
 
-  Will check that all values in the array match the schema
+  Will check that all values in the array match the spec
   (i.e. array must have homogenous type)
 
-MapOf(SCHEMA)
+MapOf(SPEC)
 
   Will check that all fields in the object have values of the same provided type
-  There's no schema for the keys since keys are always strings in JSON
+  There's no spec for the keys since keys are always strings in JSON
 
-Either([SCHEMAS...])
+Either([SPECS...])
 
-  Will check that data matches at least one of the provided schemas
+  Will check that data matches at least one of the provided specs
 
-All([SCHEMAS...])
+All([SPECS...])
 
-  Checks that all schemas match - mostly intended for use with CustomValidators
+  Checks that all specs match - mostly intended for use with CustomValidators
 
 Validator(NAME, function(DATA) => RESULT_OBJECT)
 
@@ -188,7 +188,7 @@ You can also safely nest type functions
 
 === GLOSSARY ===
 
-SCHEMA:
+SPEC:
   has same structure as data, but indicates expected types/values
 
 DATA:
@@ -199,7 +199,7 @@ VDATA:
   MAYBE_VDATA => indicates the vdata object may have a missing 'value' field
 
 VDATA structure = {
-  schemaDescription: human-friendly name of current schema context / expected type
+  specDescription: human-friendly name of current spec context / expected type
 
   value: Optional<DATA>,
 
@@ -230,7 +230,7 @@ function(...)
     // Extend from passed in vdata object, e.g. `vdata { ... }`
     vdata {
       // Add human-readable description for errors
-      schemaDescription: ...
+      specDescription: ...
     } +
     // REQUIRED: Check if vdata.value exists, if not return $.withMissingError
     if $.valueMissing(vdata) then
@@ -252,7 +252,7 @@ VALIDATOR FUNCTIONS
 Contract:
   * _MUST_ check if vdata.value field exists, if not return $.withMissingError
   * Recommended: Extend from passed vdata object - if you don't, withError/withMissingError will not work
-  * Recommended: Inject { schemaDescription: ... } after vdata - if you don't, you won't get human-readable expected: ... in error output
+  * Recommended: Inject { specDescription: ... } after vdata - if you don't, you won't get human-readable expected: ... in error output
 
 CONTEXT:
   Array of type/value tuples used to construct a jq-like path for error reporting
