@@ -43,6 +43,17 @@ test.RunTests({
     { value: utils.safeGet(struct, ['a', 'b', 0]), equals: { c: 'd' } },
   ],
 
+  'test inspect function': [
+    {
+      value: utils.inspect(struct, ['arr', 0]),
+      equals: { value: 'one' },
+    },
+    {
+      value: utils.inspect(struct, ['arr', 1, 0]),
+      assertThat: 'err' in self.value,
+    },
+  ],
+
   local entries = [
     { key: 'one', value: 1 },
     { key: 'oops', alt: 'zero' },

@@ -1,7 +1,9 @@
 #!/usr/bin/env jsonnet
 
+// TODO: Add tests for newly added functions
+
 {
-  version:: '2.3',
+  version:: '2.2',
   log:: {
     // Everything in jsonnet is an expression with a meaningful return value
     // So logging should wrap some kind of actual value and return it in-place
@@ -121,6 +123,75 @@
         handler(next[1])
   ,
 
+  // TODO: belongs in testsuite really
+  inspect(collection, path, context=[])::
+    local contextPath = function(ctx)
+      if std.length(ctx) == 0 then '.' else
+        std.foldl(
+          function(path, ctxEntry)
+            path +
+            if ctxEntry.type == 'index' then
+              '[%i]' % ctxEntry.value
+            else if ctxEntry.type == 'entry' then
+              '{%s=%s}' % ctxEntry.value
+            else
+              // Use more explicit notation if key contains . character already
+              if std.member(std.stringChars(ctxEntry.value), '.') then
+                '.["' + ctxEntry.value + '"]'
+              else
+                '.' + ctxEntry.value,
+          ctx,
+          ''
+        );
+    local pathLength = std.length(path);
+    if !std.isArray(path) then
+      self.inspect(collection, [path])
+    else if pathLength == 0 then
+      { err: 'Path empty', context: context }
+    else
+      // TODO: Should show warning if head is object and has more than one entry
+      local head = path[0];
+      local keyName = std.objectFields(head)[0],
+            keyValue = head[keyName],
+            found = self.findBy(collection, keyName, keyValue);
+      local expectedType =
+        if std.isString(head) || std.isObject(head) then 'object'
+        else if std.isNumber(head) then 'array'
+        else 'invalid';
+      local next =
+        if (std.isString(head) && std.isObject(collection) && head in collection)
+           || (std.isNumber(head) && std.isArray(collection) && std.length(collection) >= head + 1) then
+          [true, collection[head]]
+        else if std.isObject(head) && std.isArray(collection) && std.length(std.objectFields(head)) == 1 && std.length(found) == 1 then
+          [true, found[0]]
+        else if expectedType == 'invalid' then
+          [false, {
+            err: 'Invalid path element type, must be field name, index number, or { key: value }',
+            element: head,
+            type: std.type(head),
+          }]
+        else if expectedType != std.type(collection) then
+          [false, {
+            err: 'Type mismatch, %s cannot be applied to %s' % [std.type(head), std.type(collection)],
+            expected: expectedType,
+            element: head,
+          }]
+        else
+          [false, {
+            err: std.toString(head) + ' not found',
+            collection: expectedType,
+            f: std.type(collection),
+          }];
+      if !next[0] then
+        { err: '' }
+      else if pathLength > 1 then
+        self.inspect(next[1], self.tail(path), context + [{
+          type: if std.isString(head) then 'field' else if std.isNumber(head) then 'index' else 'entry',
+          value: head,
+        }])
+      else
+        { value: next[1] },
+
   // Given a list of entries, merge-reduce all entries with matching values for the given key
   // Useful for appending overrides to lists of entries, e.g. kuberentes resources
   combineEntriesByKey:: function(key, entries, mergeMethod=self.mergeObjectArray)
@@ -196,7 +267,7 @@
     if std.length(results) == 0 then -1 else results[0],
 
   // Convert any string to only the first letter being capitalized
-  capitalize:: function(word)
+  capitalize(word)::
     if std.length(word) == 0 then word
     else std.asciiUpper(std.substr(word, 0, 1)) +
          std.asciiLower(std.substr(word, 1, std.length(word) - 1)),
